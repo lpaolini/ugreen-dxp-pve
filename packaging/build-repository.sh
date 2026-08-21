@@ -51,13 +51,16 @@ apt-ftparchive -c "${REPO_ROOT}/apt-release.conf" release "${REPO_ROOT}/dists/${
 rm "${REPO_ROOT}/apt-release.conf"
 
 if [[ -n "${APT_SIGNING_KEY:-}" ]]; then
-  export GNUPGHOME="${ROOT}/.gnupg"
-  mkdir -p "${GNUPGHOME}"
+  GNUPGHOME="$(mktemp -d)"
+  export GNUPGHOME
+  trap 'rm -rf "${GNUPGHOME}"' EXIT
   chmod 700 "${GNUPGHOME}"
-  printf '%s' "${APT_SIGNING_KEY}" | gpg --batch --import
+  printf 'allow-loopback-pinentry\n' > "${GNUPGHOME}/gpg-agent.conf"
+  chmod 600 "${GNUPGHOME}/gpg-agent.conf"
+  printf '%s' "${APT_SIGNING_KEY}" | gpg --batch --yes --no-tty --import
 
   fingerprint="$(
-    gpg --batch --list-secret-keys --with-colons |
+    gpg --batch --yes --no-tty --list-secret-keys --with-colons |
       awk -F: '/^fpr:/ {print $10; exit}'
   )"
 
@@ -66,11 +69,19 @@ if [[ -n "${APT_SIGNING_KEY:-}" ]]; then
     exit 1
   fi
 
-  gpg --batch --armor --export "${fingerprint}" > "${REPO_ROOT}/public.key"
+  gpg --batch --yes --no-tty --armor --export "${fingerprint}" > "${REPO_ROOT}/public.key"
 
-  sign_args=(--batch --yes --local-user "${fingerprint}")
+  sign_args=(
+    --batch
+    --yes
+    --no-tty
+    --pinentry-mode loopback
+    --local-user "${fingerprint}"
+  )
   if [[ -n "${APT_SIGNING_PASSPHRASE:-}" ]]; then
-    sign_args+=(--pinentry-mode loopback --passphrase "${APT_SIGNING_PASSPHRASE}")
+    sign_args+=(--passphrase "${APT_SIGNING_PASSPHRASE}")
+  else
+    sign_args+=(--passphrase "")
   fi
 
   gpg "${sign_args[@]}" --clearsign \
