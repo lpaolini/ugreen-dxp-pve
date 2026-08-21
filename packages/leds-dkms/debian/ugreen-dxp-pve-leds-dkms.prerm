@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "deconfigure" ] || [ "$1" = "purge" ]; then
+    if [ -x /usr/libexec/ugreen-dxp-pve-leds-dkms/probe-led-ugreen ]; then
+        /usr/libexec/ugreen-dxp-pve-leds-dkms/probe-led-ugreen unbind || true
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

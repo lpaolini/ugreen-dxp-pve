@@ -1,0 +1,20 @@
+Source: ugreen-dxp-pve-it87-dkms
+Section: kernel
+Priority: optional
+Maintainer: Luca Paolini <lookap@gmail.com>
+Build-Depends: debhelper-compat (= 13), dh-dkms, dkms
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/lpaolini/ugreen-dxp
+Vcs-Browser: https://github.com/lpaolini/ugreen-dxp
+Vcs-Git: https://github.com/lpaolini/ugreen-dxp.git
+
+Package: ugreen-dxp-pve-it87-dkms
+Architecture: all
+Depends: ${misc:Depends}, dkms, pve-headers
+Provides: it87-dkms
+Conflicts: it87-dkms
+Replaces: it87-dkms
+Description: IT87 hardware monitoring kernel module (DKMS)
+ DKMS package for the out-of-tree it87 hwmon driver used by UGREEN DXP
+ systems to expose Super I/O temperature, voltage, and fan PWM controls.

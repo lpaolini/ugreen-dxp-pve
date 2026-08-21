@@ -1,0 +1,15 @@
+[Unit]
+Description=Configure UGREEN DXP power and network LEDs
+Documentation=https://github.com/lpaolini/ugreen-dxp
+Requires=ugreen-dxp-pve-leds-dkms.service
+After=ugreen-dxp-pve-leds-dkms.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/ugreen-dxp-pve-leds.conf
+ExecStart=/usr/libexec/ugreen-dxp-pve-leds-dkms/configure-led-ugreen
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

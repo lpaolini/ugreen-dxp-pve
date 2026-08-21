@@ -1,0 +1,15 @@
+[Unit]
+Description=Drive UGREEN front-panel LEDs from TrueNAS ZFS status
+After=pve-guests.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/ugreen-dxp-pve-truenas-zfs.conf
+ExecStart=/usr/local/bin/ugreen-truenas-zfs.py --start
+ExecStopPost=/usr/local/bin/ugreen-truenas-zfs.py --stop
+Restart=on-failure
+RestartSec=10s
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "purge" ]; then
+    rm -f /etc/ugreen-dxp-pve-leds.conf /etc/default/ugreen-dxp-pve-leds-dkms
+fi
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,171 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+set -eu
+
+DEFAULTS="/etc/ugreen-dxp-pve-leds.conf"
+
+POWER_LED_PATH="/sys/class/leds/ugreen:white:power"
+POWER_LED_TRIGGER="none"
+POWER_LED_BRIGHTNESS="255"
+POWER_LED_COLOR="0 64 16"
+
+NETDEV_LED_PATH="/sys/class/leds/ugreen:white:netdev"
+NETDEV_LED_TRIGGER="netdev"
+NETDEV_LED_DEVICE="vmbr0"
+NETDEV_LED_BRIGHTNESS="255"
+NETDEV_LED_COLOR="0 64 255"
+NETDEV_LED_LINK="1"
+NETDEV_LED_TX="1"
+NETDEV_LED_RX="1"
+NETDEV_LED_INTERVAL="50"
+
+DISK_LED_TRIGGER="none"
+DISK_LED_BRIGHTNESS="255"
+DISK_LED_COLOR="64 0 64"
+DISK_LED_BLINK_TYPE="none"
+DISK_LED_1_PATH="/sys/class/leds/ugreen:white:disk1"
+DISK_LED_2_PATH="/sys/class/leds/ugreen:white:disk2"
+DISK_LED_3_PATH="/sys/class/leds/ugreen:white:disk3"
+DISK_LED_4_PATH="/sys/class/leds/ugreen:white:disk4"
+DISK_LED_5_PATH="/sys/class/leds/ugreen:white:disk5"
+DISK_LED_6_PATH="/sys/class/leds/ugreen:white:disk6"
+DISK_LED_7_PATH="/sys/class/leds/ugreen:white:disk7"
+DISK_LED_8_PATH="/sys/class/leds/ugreen:white:disk8"
+
+if [ -r "$DEFAULTS" ]; then
+    # shellcheck source=/dev/null
+    . "$DEFAULTS"
+fi
+
+log() {
+    printf '%s\n' "$*" >&2
+}
+
+write_if_present() {
+    path="$1"
+    value="$2"
+
+    if [ -e "$path" ]; then
+        printf '%s\n' "$value" > "$path"
+        return 0
+    fi
+
+    log "Skipping missing LED attribute: $path"
+    return 1
+}
+
+normalize_color() {
+    color="$1"
+
+    case "$color" in
+        "#"??????)
+            hex="${color#\#}"
+            ;;
+        0x??????|0X??????)
+            hex="${color#??}"
+            ;;
+        ??????)
+            hex="$color"
+            ;;
+        *)
+            printf '%s\n' "$color"
+            return 0
+            ;;
+    esac
+
+    case "$hex" in
+        *[!0123456789abcdefABCDEF]*)
+            printf '%s\n' "$color"
+            return 0
+            ;;
+    esac
+
+    r="${hex%????}"
+    gb="${hex#??}"
+    g="${gb%??}"
+    b="${hex#????}"
+
+    printf '%d %d %d\n' "0x${r}" "0x${g}" "0x${b}"
+}
+
+write_color_if_present() {
+    path="$1"
+    color="$2"
+
+    write_if_present "$path" "$(normalize_color "$color")"
+}
+
+disk_led_path() {
+    case "$1" in
+        1) printf '%s\n' "$DISK_LED_1_PATH" ;;
+        2) printf '%s\n' "$DISK_LED_2_PATH" ;;
+        3) printf '%s\n' "$DISK_LED_3_PATH" ;;
+        4) printf '%s\n' "$DISK_LED_4_PATH" ;;
+        5) printf '%s\n' "$DISK_LED_5_PATH" ;;
+        6) printf '%s\n' "$DISK_LED_6_PATH" ;;
+        7) printf '%s\n' "$DISK_LED_7_PATH" ;;
+        8) printf '%s\n' "$DISK_LED_8_PATH" ;;
+        *) return 1 ;;
+    esac
+}
+
+configure_power_led() {
+    if [ ! -d "$POWER_LED_PATH" ]; then
+        log "Power LED sysfs path missing: $POWER_LED_PATH"
+        return 1
+    fi
+
+    ok=0
+    write_if_present "$POWER_LED_PATH/trigger" "$POWER_LED_TRIGGER" || ok=1
+    write_if_present "$POWER_LED_PATH/brightness" "$POWER_LED_BRIGHTNESS" || ok=1
+    write_color_if_present "$POWER_LED_PATH/color" "$POWER_LED_COLOR" || ok=1
+    return "$ok"
+}
+
+configure_netdev_led() {
+    if [ ! -d "$NETDEV_LED_PATH" ]; then
+        log "Network LED sysfs path missing: $NETDEV_LED_PATH"
+        return 1
+    fi
+
+    if [ -z "${NETDEV_LED_DEVICE:-}" ]; then
+        log "NETDEV_LED_DEVICE is empty; leaving network LED unchanged"
+        return 0
+    fi
+
+    ok=0
+    write_if_present "$NETDEV_LED_PATH/trigger" "$NETDEV_LED_TRIGGER" || ok=1
+    write_if_present "$NETDEV_LED_PATH/device_name" "$NETDEV_LED_DEVICE" || ok=1
+    write_if_present "$NETDEV_LED_PATH/brightness" "$NETDEV_LED_BRIGHTNESS" || ok=1
+    write_color_if_present "$NETDEV_LED_PATH/color" "$NETDEV_LED_COLOR" || ok=1
+    write_if_present "$NETDEV_LED_PATH/link" "$NETDEV_LED_LINK" || ok=1
+    write_if_present "$NETDEV_LED_PATH/tx" "$NETDEV_LED_TX" || ok=1
+    write_if_present "$NETDEV_LED_PATH/rx" "$NETDEV_LED_RX" || ok=1
+    write_if_present "$NETDEV_LED_PATH/interval" "$NETDEV_LED_INTERVAL" || true
+    return "$ok"
+}
+
+configure_disk_led() {
+    led_num="$1"
+    led_path="$(disk_led_path "$led_num")"
+
+    if [ -z "$led_path" ] || [ ! -d "$led_path" ]; then
+        log "Disk LED sysfs path missing: $led_path"
+        return 0
+    fi
+
+    write_if_present "$led_path/trigger" "$DISK_LED_TRIGGER" || true
+    write_if_present "$led_path/blink_type" "$DISK_LED_BLINK_TYPE" || true
+    write_if_present "$led_path/brightness" "$DISK_LED_BRIGHTNESS" || true
+    write_color_if_present "$led_path/color" "$DISK_LED_COLOR" || true
+}
+
+configure_disk_leds() {
+    for led_num in 1 2 3 4 5 6 7 8; do
+        configure_disk_led "$led_num"
+    done
+}
+
+configure_power_led
+configure_netdev_led
+configure_disk_leds

@@ -1,0 +1,17 @@
+dist/
+public/
+.gnupg/
+*.build
+*.buildinfo
+*.changes
+*.deb
+*.dsc
+*.tar.*
+*.upload
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+Module.symvers
+modules.order

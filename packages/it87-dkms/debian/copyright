@@ -1,0 +1,34 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: it87
+Source: https://github.com/frankcrawford/it87
+
+Files: *
+Copyright:
+ 2001 Chris Gauthron
+ 2005-2010 Jean Delvare <jdelvare@suse.de>
+ 2006-2026 it87 contributors
+License: GPL-2.0-or-later
+
+Files: compat.h
+Copyright:
+ 2012 Guenter Roeck <linux@roeck-us.net>
+ 2006-2026 it87 contributors
+License: GPL-2.0-or-later
+
+Files: sensors/UGreen-DXP6800-Pro.conf
+Copyright:
+ no explicit copyright notice; attributed to telnetdoogie <telnetdoogie@gmail.com>
+License: GPL-2.0-or-later
+
+Files: debian/*
+Copyright: 2026 Luca Paolini <lookap@gmail.com>
+License: GPL-2.0-or-later
+
+License: GPL-2.0-or-later
+ This program is free software; you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the
+ Free Software Foundation; either version 2 of the License, or (at your
+ option) any later version.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 2 can be found in "/usr/share/common-licenses/GPL-2".

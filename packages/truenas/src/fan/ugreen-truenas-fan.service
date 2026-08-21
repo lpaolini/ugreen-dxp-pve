@@ -1,0 +1,16 @@
+[Unit]
+Description=Drive UGREEN rear fan from TrueNAS disk temperatures
+After=pve-guests.service
+Conflicts=fancontrol.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/ugreen-dxp-pve-truenas-fan.conf
+ExecStart=/usr/local/bin/ugreen-truenas-fan.py --start
+ExecStopPost=/usr/local/bin/ugreen-truenas-fan.py --stop
+Restart=on-failure
+RestartSec=10s
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

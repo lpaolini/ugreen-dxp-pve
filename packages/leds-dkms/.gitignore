@@ -1,0 +1,16 @@
+*.o
+
+*.mod.c
+*.o
+*.cmd
+*.mod
+*.d
+modules.order
+compile_commands.json
+
+.cache
+Module.symvers
+release
+*.deb
+*.buildinfo
+*.changes

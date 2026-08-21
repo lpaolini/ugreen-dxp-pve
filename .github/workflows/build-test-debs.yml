@@ -1,0 +1,40 @@
+name: Build test debs
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version, for example 0.4.0~test20260821"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Debian tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            debhelper \
+            dh-dkms \
+            dkms \
+            dpkg-dev \
+            fakeroot
+
+      - name: Build debs
+        run: ./packaging/build-all.sh "${{ inputs.version }}" dist
+
+      - name: Upload deb artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ugreen-dxp-pve_${{ inputs.version }}_debs
+          path: dist/*.deb
+          if-no-files-found: error

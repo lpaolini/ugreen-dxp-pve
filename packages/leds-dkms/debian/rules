@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+%:
+	dh $@ --with dkms
+
+override_dh_install:
+	dh_install ugreen-dxp-leds.c usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
+	dh_install ugreen-dxp-leds.h usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
+	dh_install Makefile usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
+	dh_install debian/probe-led-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
+	dh_install debian/configure-led-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
+	dh_install debian/led-ugreen.conf etc/modules-load.d/
+	dh_installdirs etc lib/systemd/system
+	install -m 0644 debian/ugreen-dxp-pve-leds.conf debian/ugreen-dxp-pve-leds-dkms/etc/ugreen-dxp-pve-leds.conf
+	install -m 0644 debian/ugreen-dxp-pve-leds.service debian/ugreen-dxp-pve-leds-dkms/lib/systemd/system/ugreen-dxp-pve-leds.service
+
+override_dh_dkms:
+	dh_dkms -V $(DEB_VERSION_UPSTREAM)
+
+# Disable build steps (source-only package)
+override_dh_auto_configure:
+override_dh_auto_build:
+override_dh_auto_test:
+override_dh_auto_install:
+override_dh_auto_clean:

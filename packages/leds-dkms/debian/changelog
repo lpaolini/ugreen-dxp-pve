@@ -1,0 +1,31 @@
+ugreen-dxp-pve-leds-dkms (0.3.1) stable; urgency=medium
+
+  * Run lintian with the Debian profile in the Ubuntu-based publishing
+    workflow.
+  * Add Debian copyright metadata and package-maintainer VCS metadata.
+  * Keep module autoload configuration as a dpkg-managed conffile.
+  * Fix source package versioning for the native package format.
+  * Improve LED class device names and sysfs output helpers.
+  * Fix initial LED brightness state and cleanup on partial probe failure.
+  * Align human-facing names on UGREEN DXP LED kernel module.
+  * Keep repeated LED I2C binding attempts quiet when the client already
+    exists.
+  * Unbind the LED I2C client during package removal.
+  * Remove the optional I2C bus override file on purge.
+  * Fail driver probe when no LEDs are detected on an I2C client.
+  * Improve I2C binding diagnostics and support an explicit I2C_BUS override.
+  * Bind the LED controller I2C device from the DKMS package.
+  * Install a systemd oneshot service and helper script for boot-time probing.
+  * Document manual recovery when the module is loaded but LEDs are missing.
+  * Refactor to proper dh-dkms packaging
+  * Fix version consistency (0.3)
+  * Use debhelper for automated builds
+  * Change architecture to 'all' (source-only)
+
+ -- Luca Paolini <lookap@gmail.com>  Wed, 03 Jun 2026 12:00:00 +0200
+
+ugreen-dxp-pve-leds-dkms (0.3.0) unstable; urgency=medium
+
+  * Previous manual packaging version
+
+ -- Yuhao Zhou <miskcoo@gmail.com>  Sun, 20 Oct 2025 12:00:00 +0000
