@@ -74,8 +74,8 @@ direct `.deb` downloads:
 
 ```bash
 cd /tmp
-curl -LO https://lpaolini.github.io/ugreen-dxp/downloads/ugreen-dxp-pve-leds-dkms_latest.deb
-curl -LO https://lpaolini.github.io/ugreen-dxp/downloads/ugreen-dxp-pve-it87-dkms_latest.deb
+curl -LO https://lpaolini.github.io/ugreen-dxp-pve/downloads/ugreen-dxp-pve-leds-dkms_latest.deb
+curl -LO https://lpaolini.github.io/ugreen-dxp-pve/downloads/ugreen-dxp-pve-it87-dkms_latest.deb
 sudo apt install ./ugreen-dxp-pve-leds-dkms_latest.deb ./ugreen-dxp-pve-it87-dkms_latest.deb
 ```
 
@@ -91,9 +91,9 @@ repository, and install this package:
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
 
-curl -fsSL https://lpaolini.github.io/ugreen-dxp/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp.gpg
+curl -fsSL https://lpaolini.github.io/ugreen-dxp-pve/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
 
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp.gpg] https://lpaolini.github.io/ugreen-dxp stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp.list
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/ugreen-dxp-pve stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
 
 sudo apt update
 sudo apt install ugreen-dxp-pve-truenas
@@ -103,7 +103,7 @@ Or download and install the latest `.deb` directly:
 
 ```bash
 cd /tmp
-curl -LO https://lpaolini.github.io/ugreen-dxp/downloads/ugreen-dxp-pve-truenas_latest.deb
+curl -LO https://lpaolini.github.io/ugreen-dxp-pve/downloads/ugreen-dxp-pve-truenas_latest.deb
 sudo apt install ./ugreen-dxp-pve-truenas_latest.deb
 ```
 
@@ -239,7 +239,7 @@ GitHub Pages, recreate the signing secrets, and publish releases with `v*` tags.
    - Download the `.deb` artifact and install it manually.
 
 After the first successful deployment, use your fork's GitHub Pages URL in the
-apt setup commands instead of `https://lpaolini.github.io/ugreen-dxp`.
+apt setup commands instead of `https://lpaolini.github.io/ugreen-dxp-pve`.
 
 ## License
 

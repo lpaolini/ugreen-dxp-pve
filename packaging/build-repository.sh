@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${1:-"${ROOT}/dist"}"
 REPO_ROOT="${2:-"${ROOT}/public"}"
-BASE_URL="${3:-https://lpaolini.github.io/ugreen-dxp}"
+BASE_URL="${3:-https://lpaolini.github.io/ugreen-dxp-pve}"
 SUITE="${SUITE:-stable}"
 COMPONENT="${COMPONENT:-main}"
 ARCHITECTURES="${ARCHITECTURES:-amd64 arm64 all}"
@@ -36,7 +36,7 @@ done
 
 cat > "${REPO_ROOT}/apt-release.conf" <<EOF
 APT::FTPArchive::Release {
-  Origin "ugreen-dxp";
+  Origin "ugreen-dxp-pve";
   Label "UGREEN DXP PVE";
   Suite "${SUITE}";
   Codename "${SUITE}";
@@ -96,8 +96,8 @@ cat > "${REPO_ROOT}/index.html" <<EOF
 <body>
   <h1>UGREEN DXP PVE Debian Repository</h1>
   <pre>sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL ${BASE_URL}/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp.gpg
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp.gpg] ${BASE_URL} ${SUITE} ${COMPONENT}" | sudo tee /etc/apt/sources.list.d/ugreen-dxp.list
+curl -fsSL ${BASE_URL}/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] ${BASE_URL} ${SUITE} ${COMPONENT}" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
 sudo apt update
 sudo apt install ugreen-dxp-pve-truenas</pre>
   <ul>

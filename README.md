@@ -68,8 +68,8 @@ After GitHub Pages is enabled and the publishing workflow has completed:
 
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://lpaolini.github.io/ugreen-dxp/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp.gpg
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp.gpg] https://lpaolini.github.io/ugreen-dxp stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp.list
+curl -fsSL https://lpaolini.github.io/ugreen-dxp-pve/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/ugreen-dxp-pve stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
 sudo apt update
 sudo apt install ugreen-dxp-pve-truenas
 ```
@@ -127,16 +127,39 @@ and manual dispatch. It builds all three packages, creates signed APT metadata,
 publishes the repository to GitHub Pages, and uploads `.deb` files to GitHub
 Releases for tagged builds.
 
-Create these repository secrets before publishing:
+Before the publish workflow can create the signed APT repository, configure
+GitHub Pages and add the signing key secrets:
 
 - `APT_SIGNING_KEY`: ASCII-armored private key used to sign the APT repository.
 - `APT_SIGNING_PASSPHRASE`: optional passphrase for the private key.
 
+In GitHub, open `Settings -> Pages` and set `Build and deployment -> Source` to
+`GitHub Actions`.
+
+Create a signing key locally:
+
+```bash
+gpg --quick-generate-key "ugreen-dxp-pve apt <you@example.com>" ed25519 sign 2y
+gpg --list-secret-keys --keyid-format=long
+gpg --armor --export-secret-keys <fingerprint>
+```
+
+Paste the exported private key into `Settings -> Secrets and variables ->
+Actions -> New repository secret` as `APT_SIGNING_KEY`. If the key has a
+passphrase, add it as `APT_SIGNING_PASSPHRASE`.
+
 For stable releases:
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.9.1
+git push origin main
+git push origin v0.9.1
+```
+
+After the workflow completes, the repository is available at:
+
+```text
+https://lpaolini.github.io/ugreen-dxp-pve
 ```
 
 ## Upgrade Notes
