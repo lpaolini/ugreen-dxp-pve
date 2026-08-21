@@ -1,0 +1,78 @@
+name: Build Debian packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version, for example 0.4.0~test20260821"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            version="${{ inputs.version }}"
+          elif [[ "${GITHUB_REF_TYPE}" = "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="0.0.0+${GITHUB_SHA::12}"
+          fi
+          version="${version#v}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install Debian tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            apt-utils \
+            build-essential \
+            debhelper \
+            dh-dkms \
+            dkms \
+            dpkg-dev \
+            fakeroot \
+            lintian \
+            shellcheck \
+            python3
+
+      - name: Build Debian packages
+        run: ./packaging/build-all.sh "${{ steps.version.outputs.version }}" dist
+
+      - name: Run package checks
+        run: |
+          shellcheck \
+            packaging/build-all.sh \
+            packaging/build-repository.sh \
+            packages/leds-dkms/debian/probe-led-ugreen \
+            packages/leds-dkms/debian/configure-led-ugreen \
+            packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.postinst \
+            packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.prerm \
+            packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.postrm \
+            packages/truenas/packaging/build-deb.sh
+          PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
+            packages/truenas/src/fan/ugreen-truenas-fan.py \
+            packages/truenas/src/zfs/ugreen-truenas-zfs.py
+          lintian --profile debian -EvIL +pedantic dist/*.deb
+
+      - name: Upload Debian package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ugreen-dxp-pve_${{ steps.version.outputs.version }}_debs
+          path: dist/*.deb
+          if-no-files-found: error
+          retention-days: 30

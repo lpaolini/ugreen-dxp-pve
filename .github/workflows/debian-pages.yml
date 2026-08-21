@@ -74,14 +74,6 @@ jobs:
             packages/truenas/packaging/build-deb.sh
           lintian --profile debian -EvIL +pedantic dist/*.deb
 
-      - name: Upload Debian package artifacts
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: ugreen-dxp-pve_${{ steps.version.outputs.version }}_debs
-          path: dist/*.deb
-          if-no-files-found: error
-
       - name: Upload Debian packages to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
