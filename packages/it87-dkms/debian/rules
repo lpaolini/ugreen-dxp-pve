@@ -13,6 +13,7 @@ override_dh_install:
 	dh_install -p$(package) Makefile usr/src/$(module)-$(version)
 	dh_install -p$(package) compat.h usr/src/$(module)-$(version)
 	dh_install -p$(package) it87.c usr/src/$(module)-$(version)
+	dh_install -p$(package) debian/ugreen-dxp-pve-it87.conf etc/modules-load.d/
 	printf '%s\n' '$(version)' > debian/$(package)/usr/src/$(module)-$(version)/VERSION
 
 override_dh_dkms:

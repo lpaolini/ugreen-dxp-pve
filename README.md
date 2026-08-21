@@ -28,6 +28,8 @@ The DKMS packages expose the UGREEN hardware through normal Linux sysfs
 interfaces on the Proxmox host. The LED package binds the onboard I2C LED
 controller at `0x3a`, loads the standard LED triggers, and initializes the
 power, network, and disk LEDs from `/etc/ugreen-dxp-pve-leds.conf`.
+Both DKMS packages load their kernel modules after installation and configure
+systemd modules-load entries so they are loaded again on reboot.
 
 The TrueNAS helper services also run on the Proxmox host. They query a TrueNAS
 Scale VM through `qm guest exec` and the QEMU guest agent, then apply the VM

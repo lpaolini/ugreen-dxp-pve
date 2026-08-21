@@ -7,6 +7,11 @@ if [ "$1" = "configure" ] && [ -x /usr/libexec/ugreen-dxp-pve-leds-dkms/probe-le
     /usr/libexec/ugreen-dxp-pve-leds-dkms/probe-led-ugreen || true
 fi
 
+if [ "$1" = "configure" ] && command -v modprobe >/dev/null 2>&1; then
+    modprobe ledtrig-oneshot || true
+    modprobe ledtrig-netdev || true
+fi
+
 if [ "$1" = "configure" ] && [ -x /usr/libexec/ugreen-dxp-pve-leds-dkms/configure-led-ugreen ]; then
     /usr/libexec/ugreen-dxp-pve-leds-dkms/configure-led-ugreen || true
 fi

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+if [ "$1" = "configure" ] && command -v modprobe >/dev/null 2>&1; then
+    modprobe it87 || true
+fi
+
+exit 0

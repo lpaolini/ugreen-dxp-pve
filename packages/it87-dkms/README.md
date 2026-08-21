@@ -9,6 +9,11 @@ The Debian package installs only the files needed by DKMS:
 - `compat.h`
 - `Makefile`
 - `debian/ugreen-dxp-pve-it87-dkms.dkms`
+- `/etc/modules-load.d/ugreen-dxp-pve-it87.conf`
+
+During package configuration, DKMS builds and installs the module, then the
+postinst script attempts to load `it87` immediately. The modules-load entry
+loads it again on future boots.
 
 The full upstream research archive, non-UGREEN sensor examples, patch snapshots,
 and manual DKMS helper scripts are intentionally not carried in this monorepo.
