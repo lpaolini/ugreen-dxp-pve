@@ -2,25 +2,42 @@
 
 ![UGREEN DXP LED state demo](packages/truenas/docs/assets/led-mixed-state-demo.gif)
 
-This repository packages the UGREEN DXP Proxmox VE support stack as a signed
-Debian/APT repository for UGREEN NAS systems running Proxmox VE.
+## Scenario
+You own a UGREEN DXP-series NAS running a custom stack:
 
-It builds and publishes:
+- Proxmox VE as OS
+- TrueNAS v25.10 as a VM, with full SATA passthrough (for performance reasons)
 
-- `ugreen-dxp-pve-leds-dkms`: DKMS package for the `led-ugreen` kernel module.
+This repository packages a signed Debian/APT repository providing support for controlling LEDs on the front panel and the main fan.
+
+- Power and network LEDs are controlled directly by Proxmox VE
+- Disk LEDs are controlled by Proxmox VE by querying TrueNAS for ZFS disk status
+- Main fan is controlled by Proxmox VE by querying TrueNAS for the highest disk temperature.
+
+Tested on UGREEN DXP-4800 PRO, but should work with minimal/no changes on other devices of the same family.
+
+### Debian packages
+
+- `ugreen-dxp-pve-leds-dkms`
+
+  DKMS package for the `led-ugreen` kernel module.
   It exposes `/sys/class/leds/ugreen:white:*` class devices for the power,
   network, and disk LEDs.
-- `ugreen-dxp-pve-it87-dkms`: DKMS package for the `it87` hwmon kernel module.
+
+  Derived from [miskcoo/ugreen_leds_controller](https://github.com/miskcoo/ugreen_leds_controller/tree/v0.3) v0.3.
+
+- `ugreen-dxp-pve-it87-dkms`
+
+  DKMS package for the `it87` hwmon kernel module.
   It exposes the CPU and main fan class devices used by the fan-control helper.
-- `ugreen-dxp-pve-truenas`: Proxmox host services for fan control and
-  front-panel LED status when TrueNAS is running as a Proxmox VM with SATA
-  controller passthrough.
 
-Installing `ugreen-dxp-pve-truenas` pulls in both DKMS packages.
+  Derived from [frankcrawford/it87](https://github.com/frankcrawford/it87).
 
-This work builds on the original packages by
-[frankcrawford/it87](https://github.com/frankcrawford/it87) and
-[miskcoo/ugreen_leds_controller](https://github.com/miskcoo/ugreen_leds_controller).
+- `ugreen-dxp-pve-truenas`
+
+  Proxmox host services for fan control and front-panel LED status when TrueNAS is running as a Proxmox VM with SATA controller passthrough.
+
+  Note: disk LEDs are used to show ZFS disk status, not disk activity.
 
 ## How It Works
 
@@ -66,20 +83,45 @@ front panel:
 
 ## Install From The APT Repository
 
-After GitHub Pages is enabled and the publishing workflow has completed:
+Enter Proxmox VE shell as root, and install the Debian repository:
 
 ```bash
-sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://lpaolini.github.io/ugreen-dxp-pve/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/ugreen-dxp-pve stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
-sudo apt update
-sudo apt install ugreen-dxp-pve-truenas
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://lpaolini.github.io/ugreen-dxp-pve/public.key | gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/ugreen-dxp-pve stable main" | tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
+apt update
+```
+
+To install the kernel modules and the support services for TrueNAS:
+
+```bash
+apt install ugreen-dxp-pve-truenas
 ```
 
 To install only the kernel modules:
 
 ```bash
-sudo apt install ugreen-dxp-pve-leds-dkms ugreen-dxp-pve-it87-dkms
+apt install ugreen-dxp-pve-leds-dkms ugreen-dxp-pve-it87-dkms
+```
+
+### Configuration files
+
+- `/etc/ugreen-dxp-pve-leds.conf`
+- `/etc/ugreen-dxp-pve-truenas-fan.conf` (`VMID` needs to be set)
+- `/etc/ugreen-dxp-pve-truenas-zfs.conf` (`VMID` needs to be set)
+
+After setting the `VMID`, restart the services:
+
+```bash
+systemctl restart ugreen-truenas-zfs.service
+systemctl restart ugreen-truenas-fan.service
+```
+
+Then, check the service status:
+
+```bash
+systemctl status ugreen-truenas-zfs.service
+systemctl status ugreen-truenas-fan.service
 ```
 
 ## Package Layout
@@ -99,8 +141,8 @@ packaging/
 Install Debian packaging tools:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y build-essential debhelper dh-dkms dkms dpkg-dev fakeroot apt-utils gnupg
+apt-get update
+apt-get install -y build-essential debhelper dh-dkms dkms dpkg-dev fakeroot apt-utils gnupg
 ```
 
 Build all packages using one Debian version:
@@ -118,7 +160,7 @@ Build an unsigned local APT repository:
 The package files will be in `dist/`, and the APT repository tree will be in
 `public/`.
 
-## Publish
+## Forking
 
 The `Build Debian packages` workflow runs on every `v*` tag push and uploads
 the generated `.deb` files as GitHub Actions artifacts. It can also be run
@@ -161,21 +203,18 @@ git push origin v0.9.1
 After the workflow completes, the repository is available at:
 
 ```text
-https://lpaolini.github.io/ugreen-dxp-pve
+https://<you>.github.io/ugreen-dxp-pve
 ```
-
-## Upgrade Notes
-
-The new packages include compatibility metadata for the previous package names:
-
-- `ugreen-dxp-pve-leds-dkms` provides/conflicts/replaces
-  `ugreen-dxp-leds-dkms`.
-- `ugreen-dxp-pve-it87-dkms` provides/conflicts/replaces `it87-dkms`.
-- `ugreen-dxp-pve-truenas` provides/conflicts/replaces
-  `ugreen-dxp-proxmox-truenas`.
 
 ## License
 
-This repository combines components with different licenses. See
-[LICENSE.md](LICENSE.md) and each package's Debian copyright metadata for the
+This repository combines components with different licenses.
+
+See [LICENSE.md](LICENSE.md) and each package's Debian copyright metadata for the
 license breakdown.
+
+## Credits
+
+This project builds on earlier work by @miskcoo and @frankcrawford.
+
+Many thanks to the original authors!
