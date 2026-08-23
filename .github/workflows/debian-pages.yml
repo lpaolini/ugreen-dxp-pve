@@ -2,15 +2,13 @@ name: Publish Debian repository
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
       version:
         description: "Package version, for example 0.4.0"
-        required: false
+        required: true
         type: string
 
 permissions:
@@ -54,7 +52,8 @@ jobs:
           elif [[ "${GITHUB_REF_TYPE}" = "tag" ]]; then
             version="${GITHUB_REF_NAME#v}"
           else
-            version="0.0.0+${GITHUB_SHA::12}"
+            echo "Package version could not be resolved; use a v* tag or workflow_dispatch version input" >&2
+            exit 1
           fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 

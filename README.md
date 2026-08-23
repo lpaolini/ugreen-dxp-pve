@@ -166,10 +166,10 @@ The `Build Debian packages` workflow runs on every `v*` tag push and uploads
 the generated `.deb` files as GitHub Actions artifacts. It can also be run
 manually with an explicit Debian version.
 
-The `Publish Debian repository` workflow runs on pushes to `main`, `v*` tags,
-and manual dispatch. It builds all three packages, creates signed APT metadata,
-publishes the repository to GitHub Pages, and uploads `.deb` files to GitHub
-Releases for tagged builds.
+The `Publish Debian repository` workflow runs on `v*` tag pushes and manual
+dispatch with an explicit version. It builds all three packages, creates signed
+APT metadata, publishes the repository to GitHub Pages, and uploads `.deb`
+files to GitHub Releases for tagged builds.
 
 Before the publish workflow can create the signed APT repository, configure
 GitHub Pages and add the signing key secrets:
