@@ -66,7 +66,7 @@ fit your system, pin `FAN_PWM_PATH`, `FAN_PWM_ENABLE_PATH`, and
 - `ugreen-dxp-pve-it87-dkms` installed on the Proxmox host, so fan PWM controls
   are exposed through hwmon sysfs.
 - `hdparm` available inside the TrueNAS VM if you want the ZFS LED service to
-  show spun-down/standby disks with the separate spindown color. If it is not
+  show spun-down/standby disks with the separate spindown breathing pattern. If it is not
   available, healthy disks remain shown as normal online disks.
 
 ## Preliminary step: install the UGREEN DKMS packages
