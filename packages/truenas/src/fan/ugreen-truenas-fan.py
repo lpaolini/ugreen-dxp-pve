@@ -45,7 +45,7 @@ POWER_LED_HELPER = os.environ.get(
     "POWER_LED_HELPER",
     "/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen",
 ).strip()
-POWER_LED_FAULT_NAME = os.environ.get("POWER_LED_FAULT_NAME", "fan-control").strip()
+POWER_LED_FAULT_NAME = os.environ.get("POWER_LED_FAULT_NAME", "fan_control").strip()
 
 # Limit temperature extraction to disk-like sensors so CPU/package temps do not
 # spin the storage fan. Override if your TrueNAS sensor chip names differ.

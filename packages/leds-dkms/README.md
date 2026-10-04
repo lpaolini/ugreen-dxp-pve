@@ -100,8 +100,8 @@ state only by setting or clearing named flags with:
 For example:
 
 ```sh
-/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen set-fault fan-control
-/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen clear-fault fan-control
+/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen set-fault fan_control
+/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen clear-fault fan_control
 ```
 
 Any active flag switches the power LED to the `POWER_LED_FAULT_*` state. By

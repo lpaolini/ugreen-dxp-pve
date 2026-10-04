@@ -56,7 +56,7 @@ state to host hardware:
 - `ugreen-truenas-fan.service` reads disk temperatures from `sensors -j` inside
   TrueNAS, combines them with the host CPU temperature, and writes the selected
   PWM value to the UGREEN fan sysfs path. If the fan PWM write fails, it raises
-  a `fan-control` flag with the power LED helper; the power LED service watches
+  a `fan_control` flag with the power LED helper; the power LED service watches
   those flags and displays the configured fault state until all flags clear.
 - `ugreen-truenas-zfs.service` reads `lsblk`, `zpool status -pj`, and optional
   disk standby data, maps VM disks back to physical UGREEN bays, and drives

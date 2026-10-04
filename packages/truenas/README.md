@@ -24,7 +24,7 @@ There are two services:
   PWM value from the configured disk and CPU fan curves, and writes that value to
   the UGREEN fan PWM sysfs path on the Proxmox host. If temperature collection
   fails, it uses the configured failsafe PWM. If the fan PWM path cannot be
-  controlled, it raises a `fan-control` flag with the power LED helper until a
+  controlled, it raises a `fan_control` flag with the power LED helper until a
   later PWM write succeeds.
 - `ugreen-truenas-zfs.service` polls `lsblk` and `zpool status -pj` inside the
   TrueNAS VM, maps the VM's disks back to the four physical UGREEN bays, and

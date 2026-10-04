@@ -21,7 +21,7 @@ usage() {
 
 validate_fault_name() {
     case "${1:-}" in
-        ""|*/*|*[^A-Za-z0-9_.-]*)
+        ""|*[!-A-Za-z0-9_.]*)
             log "Invalid power LED fault name: ${1:-}"
             return 1
             ;;
