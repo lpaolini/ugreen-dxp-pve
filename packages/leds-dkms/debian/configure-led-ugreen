@@ -4,11 +4,6 @@ set -eu
 
 DEFAULTS="/etc/ugreen-dxp-pve-leds.conf"
 
-POWER_LED_PATH="/sys/class/leds/ugreen:white:power"
-POWER_LED_TRIGGER="none"
-POWER_LED_BRIGHTNESS="255"
-POWER_LED_COLOR="0 64 16"
-
 NETDEV_LED_PATH="/sys/class/leds/ugreen:white:netdev"
 NETDEV_LED_TRIGGER="netdev"
 NETDEV_LED_DEVICE="vmbr0"
@@ -109,19 +104,6 @@ disk_led_path() {
     esac
 }
 
-configure_power_led() {
-    if [ ! -d "$POWER_LED_PATH" ]; then
-        log "Power LED sysfs path missing: $POWER_LED_PATH"
-        return 1
-    fi
-
-    ok=0
-    write_if_present "$POWER_LED_PATH/trigger" "$POWER_LED_TRIGGER" || ok=1
-    write_if_present "$POWER_LED_PATH/brightness" "$POWER_LED_BRIGHTNESS" || ok=1
-    write_color_if_present "$POWER_LED_PATH/color" "$POWER_LED_COLOR" || ok=1
-    return "$ok"
-}
-
 configure_netdev_led() {
     if [ ! -d "$NETDEV_LED_PATH" ]; then
         log "Network LED sysfs path missing: $NETDEV_LED_PATH"
@@ -166,6 +148,5 @@ configure_disk_leds() {
     done
 }
 
-configure_power_led
 configure_netdev_led
 configure_disk_leds

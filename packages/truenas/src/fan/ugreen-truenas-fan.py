@@ -41,6 +41,11 @@ MANUAL_PWM_ENABLE_VALUE = os.environ.get("MANUAL_PWM_ENABLE_VALUE", "1")
 AUTO_PWM_ENABLE_VALUE = os.environ.get("AUTO_PWM_ENABLE_VALUE", "2")
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "30"))
 RESET_PWM_ON_EXIT = os.environ.get("RESET_PWM_ON_EXIT", "1") == "1"
+POWER_LED_HELPER = os.environ.get(
+    "POWER_LED_HELPER",
+    "/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen",
+).strip()
+POWER_LED_FAULT_NAME = os.environ.get("POWER_LED_FAULT_NAME", "fan-control").strip()
 
 # Limit temperature extraction to disk-like sensors so CPU/package temps do not
 # spin the storage fan. Override if your TrueNAS sensor chip names differ.
@@ -48,6 +53,7 @@ TEMP_CHIP_REGEX = os.environ.get("TEMP_CHIP_REGEX", r"(?i)(drivetemp|nvme|ata|sc
 
 syslog.openlog(TAG)
 STOP_REQUESTED = threading.Event()
+POWER_LED_FAULT_ACTIVE = None
 
 
 @dataclass(frozen=True)
@@ -79,20 +85,63 @@ def clamp(value, low, high):
     return max(low, min(high, value))
 
 
-def _write(path, value):
+def _write(path, value, hint=None):
     try:
         with open(path, "w") as f:
             f.write(str(value) + "\n")
     except PermissionError as e:
-        log(
-            f"sysfs write failed: {path}={value!r}: {e}; "
-            "check FAN_HWMON_NAME/FAN_PWM_CHANNEL or set FAN_PWM_PATH manually"
-        )
+        suffix = f"; {hint}" if hint else ""
+        log(f"sysfs write failed: {path}={value!r}: {e}{suffix}")
         return False
     except OSError as e:
         log(f"sysfs write failed: {path}={value!r}: {e}")
         return False
     return True
+
+
+def set_power_led_fault(active):
+    global POWER_LED_FAULT_ACTIVE
+
+    if POWER_LED_FAULT_ACTIVE is active:
+        return True
+    if not POWER_LED_HELPER:
+        return False
+    if not POWER_LED_FAULT_NAME:
+        log("POWER_LED_FAULT_NAME is empty; cannot update power LED fault")
+        return False
+
+    action = "set-fault" if active else "clear-fault"
+    try:
+        proc = subprocess.run(
+            [POWER_LED_HELPER, action, POWER_LED_FAULT_NAME],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError as e:
+        log(f"power LED helper failed: {e}")
+        return False
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        if detail:
+            log(f"power LED helper {action} failed: {detail}")
+        else:
+            log(f"power LED helper {action} failed with rc={proc.returncode}")
+        return False
+
+    POWER_LED_FAULT_ACTIVE = active
+    return True
+
+
+def apply_fan_pwm(pwm):
+    ok = set_fan_pwm(pwm)
+    set_power_led_fault(not ok)
+    return ok
+
+
+def apply_fan_auto():
+    ok = set_fan_auto()
+    set_power_led_fault(not ok)
+    return ok
 
 
 def set_fan_pwm(pwm):
@@ -102,13 +151,22 @@ def set_fan_pwm(pwm):
     if not FAN_PWM_PATH:
         log("FAN_PWM_PATH is not configured and hwmon auto-discovery did not resolve it")
         return False
+    if not os.path.exists(FAN_PWM_PATH):
+        log(f"PWM path missing: {FAN_PWM_PATH}")
+        return False
 
-    if os.path.exists(FAN_PWM_ENABLE_PATH):
-        _write(FAN_PWM_ENABLE_PATH, MANUAL_PWM_ENABLE_VALUE)
+    ok = True
+    hint = "check FAN_HWMON_NAME/FAN_PWM_CHANNEL or set FAN_PWM_PATH manually"
+
+    if FAN_PWM_ENABLE_PATH and os.path.exists(FAN_PWM_ENABLE_PATH):
+        ok = _write(FAN_PWM_ENABLE_PATH, MANUAL_PWM_ENABLE_VALUE, hint) and ok
+    elif FAN_PWM_ENABLE_PATH:
+        log(f"PWM enable path missing: {FAN_PWM_ENABLE_PATH}")
+        ok = False
     else:
-        dbg(f"PWM enable path missing, skipping: {FAN_PWM_ENABLE_PATH}")
+        dbg("FAN_PWM_ENABLE_PATH is empty, skipping manual-mode write")
 
-    ok = _write(FAN_PWM_PATH, pwm)
+    ok = _write(FAN_PWM_PATH, pwm, hint) and ok
     rpm = read_int(FAN_INPUT_PATH)
     rpm_text = "unknown" if rpm is None else str(rpm)
     log(f"fan pwm={pwm}, rpm={rpm_text}, path={FAN_PWM_PATH}")
@@ -119,8 +177,12 @@ def set_fan_auto():
     if not FAN_PWM_ENABLE_PATH:
         log("FAN_PWM_ENABLE_PATH is not configured and hwmon auto-discovery did not resolve it")
         return False
+    if not os.path.exists(FAN_PWM_ENABLE_PATH):
+        log(f"PWM enable path missing: {FAN_PWM_ENABLE_PATH}")
+        return False
 
-    ok = _write(FAN_PWM_ENABLE_PATH, AUTO_PWM_ENABLE_VALUE)
+    hint = "check FAN_HWMON_NAME/FAN_PWM_CHANNEL or set FAN_PWM_ENABLE_PATH manually"
+    ok = _write(FAN_PWM_ENABLE_PATH, AUTO_PWM_ENABLE_VALUE, hint)
     if ok:
         log(f"fan pwm control reset to auto: {FAN_PWM_ENABLE_PATH}={AUTO_PWM_ENABLE_VALUE}")
     return ok
@@ -361,24 +423,24 @@ def control_once():
         cpu_curve = parse_curve("CPU_FAN_CURVE", CPU_FAN_CURVE)
     except ValueError as e:
         log(str(e))
-        set_fan_pwm(FAILSAFE_PWM)
+        apply_fan_pwm(FAILSAFE_PWM)
         return False
 
     cpu_temp = read_temp_c(CPU_TEMP_PATH)
     if cpu_temp is None:
         log(f"CPU temperature read failed: {CPU_TEMP_PATH}")
-        set_fan_pwm(FAILSAFE_PWM)
+        apply_fan_pwm(FAILSAFE_PWM)
         return False
 
     sensors_obj = fetch_guest_sensors()
     if sensors_obj is None:
-        set_fan_pwm(FAILSAFE_PWM)
+        apply_fan_pwm(FAILSAFE_PWM)
         return False
 
     readings = collect_disk_temps(sensors_obj)
     if not readings:
         log(f"no disk temperature readings matched TEMP_CHIP_REGEX={TEMP_CHIP_REGEX!r}")
-        set_fan_pwm(FAILSAFE_PWM)
+        apply_fan_pwm(FAILSAFE_PWM)
         return False
 
     hottest = max(readings, key=lambda r: r.temp_c)
@@ -390,7 +452,7 @@ def control_once():
         f"hottest disk temp={hottest.temp_c:.1f}C ({hottest.chip}/{hottest.feature}), "
         f"hdd_pwm={hdd_pwm}, cpu temp={cpu_temp:.1f}C, cpu_pwm={cpu_pwm}, pwm={pwm}"
     )
-    return set_fan_pwm(pwm)
+    return apply_fan_pwm(pwm)
 
 
 def request_stop(signum, _frame):
@@ -408,7 +470,7 @@ def run_loop():
             STOP_REQUESTED.wait(POLL_INTERVAL)
     finally:
         if RESET_PWM_ON_EXIT:
-            set_fan_auto()
+            apply_fan_auto()
 
 
 def main():
@@ -421,7 +483,7 @@ def main():
     resolve_host_hwmon_paths()
 
     if args.stop:
-        sys.exit(0 if set_fan_auto() else 1)
+        sys.exit(0 if apply_fan_auto() else 1)
 
     if not require_vmid():
         sys.exit(1)

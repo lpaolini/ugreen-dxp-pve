@@ -11,7 +11,7 @@ Vcs-Git: https://github.com/lpaolini/ugreen-dxp.git
 
 Package: ugreen-dxp-pve-leds-dkms
 Architecture: all
-Depends: ${misc:Depends}, dkms, pve-headers
+Depends: ${misc:Depends}, dkms, pve-headers, python3
 Recommends: i2c-tools
 Provides: ugreen-dxp-leds-dkms, led-ugreen-kernel, led-ugreen-dkms
 Conflicts: ugreen-dxp-leds-dkms, led-ugreen-dkms

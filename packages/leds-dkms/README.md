@@ -62,9 +62,9 @@ the `_apt` user cannot read files in `/root`.
 The package registers the module with DKMS and configures `i2c-dev`,
 `led-ugreen`, `ledtrig-oneshot`, and `ledtrig-netdev` to load at boot.
 It installs one systemd oneshot service that binds the `led-ugreen` driver to
-the LED controller at I2C address `0x3a`, and another oneshot service that
-configures `/sys/class/leds/ugreen:white:power` and
-`/sys/class/leds/ugreen:white:netdev`, plus any present disk LEDs from
+the LED controller at I2C address `0x3a`, and a long-running service that
+monitors power LED fault flags and configures `/sys/class/leds/ugreen:white:netdev`,
+plus any present disk LEDs from
 `/sys/class/leds/ugreen:white:disk1` through
 `/sys/class/leds/ugreen:white:disk8`.
 
@@ -78,15 +78,36 @@ By default, the power LED is set to steady green, and the network LED uses the
 kernel `netdev` trigger for `vmbr0` in blue. Adjust `NETDEV_LED_DEVICE` when
 your Proxmox management bridge or physical interface has a different name.
 Disk LEDs are initialized to steady purple with no activity trigger so the
-later TrueNAS helper starts from a quiet, known state. Set `POWER_LED_COLOR`,
-`NETDEV_LED_COLOR`, and `DISK_LED_COLOR` to change the RGB colors. Colors may
-be written as decimal RGB triplets or six-digit hex values:
+later TrueNAS helper starts from a quiet, known state. Set
+`POWER_LED_NORMAL_COLOR`, `NETDEV_LED_COLOR`, and `DISK_LED_COLOR` to change the
+RGB colors. Colors may be written as decimal RGB triplets or six-digit hex
+values:
 
 ```sh
-POWER_LED_COLOR="0 64 16"
+POWER_LED_NORMAL_COLOR="0 64 16"
 NETDEV_LED_COLOR="0 64 255"
 DISK_LED_COLOR="64 0 64"
 ```
+
+The power LED is rendered by `ugreen-dxp-pve-leds.service`, which watches the
+configured `POWER_LED_STATE_DIR` with inotify. Services should change power LED
+state only by setting or clearing named flags with:
+
+```sh
+/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen
+```
+
+For example:
+
+```sh
+/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen set-fault fan-control
+/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen clear-fault fan-control
+```
+
+Any active flag switches the power LED to the `POWER_LED_FAULT_*` state. By
+default this is full-brightness red with `blink 500 500`, a 1 second period at
+50% duty cycle. When the last flag clears, the monitor restores the
+`POWER_LED_NORMAL_*` state.
 
 If the module is loaded but `/sys/class/leds/ugreen:white:disk1` does not
 exist, the I2C device has probably not been created yet. Run the helper

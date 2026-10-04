@@ -43,8 +43,9 @@ Tested on UGREEN DXP-4800 PRO, but should work with minimal/no changes on other 
 
 The DKMS packages expose the UGREEN hardware through normal Linux sysfs
 interfaces on the Proxmox host. The LED package binds the onboard I2C LED
-controller at `0x3a`, loads the standard LED triggers, and initializes the
-power, network, and disk LEDs from `/etc/ugreen-dxp-pve-leds.conf`.
+controller at `0x3a`, loads the standard LED triggers, starts a power LED
+fault-state monitor, and initializes the network and disk LEDs from
+`/etc/ugreen-dxp-pve-leds.conf`.
 Both DKMS packages load their kernel modules after installation and configure
 systemd modules-load entries so they are loaded again on reboot.
 
@@ -54,7 +55,9 @@ state to host hardware:
 
 - `ugreen-truenas-fan.service` reads disk temperatures from `sensors -j` inside
   TrueNAS, combines them with the host CPU temperature, and writes the selected
-  PWM value to the UGREEN fan sysfs path.
+  PWM value to the UGREEN fan sysfs path. If the fan PWM write fails, it raises
+  a `fan-control` flag with the power LED helper; the power LED service watches
+  those flags and displays the configured fault state until all flags clear.
 - `ugreen-truenas-zfs.service` reads `lsblk`, `zpool status -pj`, and optional
   disk standby data, maps VM disks back to physical UGREEN bays, and drives
   `/sys/class/leds/ugreen:white:disk1` through `disk4`.

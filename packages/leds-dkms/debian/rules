@@ -11,6 +11,8 @@ override_dh_install:
 	dh_install Makefile usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
 	dh_install debian/probe-led-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
 	dh_install debian/configure-led-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
+	dh_install debian/power-led-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
+	dh_install debian/power-led-monitor-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
 	dh_install debian/led-ugreen.conf etc/modules-load.d/
 	dh_installdirs etc lib/systemd/system
 	install -m 0644 debian/ugreen-dxp-pve-leds.conf debian/ugreen-dxp-pve-leds-dkms/etc/ugreen-dxp-pve-leds.conf
