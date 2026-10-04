@@ -167,7 +167,7 @@ usually `2` or `3`, before pinning absolute `hwmonN` paths.
 | <img src="docs/assets/led-states/checking.gif" alt="CHECKING LED" width="36"> | `CHECKING` | Querying the TrueNAS VM; previous color is preserved | `unchanged` | `blink 100 100` |
 | <img src="docs/assets/led-states/online.gif" alt="ONLINE LED" width="36"> | `ONLINE` | Healthy online disk | `0 40 0` | `none` |
 | <img src="docs/assets/led-states/online-alert.gif" alt="ONLINE_ALERT LED" width="36"> | `ONLINE_ALERT` | Healthy disk in a pool at or above `ALERT_THRESHOLD` | `0 40 0` | `blink 500 500` |
-| <img src="docs/assets/led-states/spindown.gif" alt="SPINDOWN LED" width="36"> | `SPINDOWN` | Healthy disk in standby/spindown | `0 20 60` | `none` |
+| <img src="docs/assets/led-states/spindown.gif" alt="SPINDOWN LED" width="36"> | `SPINDOWN` | Healthy disk in standby/spindown | `0 40 0` | `breath 2000 0` |
 | <img src="docs/assets/led-states/degraded.gif" alt="DEGRADED LED" width="36"> | `DEGRADED` | ZFS reports a degraded leaf vdev | `80 40 0` | `blink 500 500` |
 | <img src="docs/assets/led-states/faulted.gif" alt="FAULTED LED" width="36"> | `FAULTED` | ZFS reports a failed leaf vdev | `80 0 0` | `blink 500 500` |
 | <img src="docs/assets/led-states/unavail.gif" alt="UNAVAIL LED" width="36"> | `UNAVAIL` | ZFS reports an unavailable leaf vdev | `80 0 0` | `blink 500 500` |
