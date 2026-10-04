@@ -43,11 +43,16 @@ starting the services. If `VMID` is not configured, the services exit instead of
 guessing.
 
 Edit those files when your hwmon paths, LED paths, fan curves, ZFS bay mapping,
-or polling interval differ from the tested DXP 4800 PRO layout. The most
-commonly adjusted settings are `VMID`, `POLL_INTERVAL`, `FAN_PWM_PATH`,
-`FAN_PWM_ENABLE_PATH`, `FAN_INPUT_PATH`, `CPU_TEMP_PATH`, `HDD_FAN_CURVE`,
-`CPU_FAN_CURVE`, `TEMP_CHIP_REGEX`, `LED_1_PATH` through `LED_4_PATH`,
-`ALERT_THRESHOLD`, and the `BAY_1_PATH` through `BAY_4_PATH` values.
+or polling interval differ from the tested DXP 4800 PRO layout. The fan helper
+auto-discovers the `/sys/class/hwmon/hwmon*` directory whose `name` matches an
+ITE chip exposed by the it87 driver, such as `it8613`, and then uses
+`FAN_PWM_CHANNEL` to build the PWM, PWM enable, and fan RPM paths.
+The most commonly adjusted settings are `VMID`, `POLL_INTERVAL`,
+`FAN_HWMON_REGEX`, `FAN_HWMON_NAME`, `FAN_PWM_CHANNEL`, `CPU_TEMP_PATH`,
+`HDD_FAN_CURVE`, `CPU_FAN_CURVE`, `TEMP_CHIP_REGEX`, `LED_1_PATH` through
+`LED_4_PATH`, `ALERT_THRESHOLD`, and the `BAY_1_PATH` through `BAY_4_PATH`
+values. If auto-discovery does not fit your system, pin `FAN_PWM_PATH`,
+`FAN_PWM_ENABLE_PATH`, and `FAN_INPUT_PATH` explicitly.
 
 ## Requirements
 
@@ -135,6 +140,21 @@ Then restart the services so systemd starts them with the updated configuration:
 sudo systemctl restart ugreen-truenas-fan.service
 sudo systemctl restart ugreen-truenas-zfs.service
 ```
+
+To inspect the host fan-control paths manually:
+
+```bash
+for h in /sys/class/hwmon/hwmon*; do
+  printf '%s: %s\n' "$h" "$(cat "$h/name")"
+done
+
+ls -l /sys/class/hwmon/hwmon*/pwm* /sys/class/hwmon/hwmon*/fan*_input
+```
+
+If the service logs `Permission denied` for a `pwmN` path, first verify that
+the selected hwmon directory is the ITE controller, for example `it8613`, and
+that the matching `pwmN_enable` file exists. Try a different `FAN_PWM_CHANNEL`,
+usually `2` or `3`, before pinning absolute `hwmonN` paths.
 
 ## LED showcase
 

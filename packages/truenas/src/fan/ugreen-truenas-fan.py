@@ -4,6 +4,7 @@
 # Requires: qemu-guest-agent running inside TrueNAS, lm-sensors/drivetemp in the
 # guest, and the UGREEN/it87 hwmon driver exposed on the Proxmox host.
 import argparse
+import glob
 import json
 import os
 import re
@@ -20,10 +21,14 @@ DEBUG = os.environ.get("DEBUG", "1") == "1"
 
 # DXP4800-class systems expose the wired fan channels as pwm2/pwm3 through it87.
 # Keep the path configurable because hwmon numbering can change after boot.
-FAN_PWM_PATH = os.environ.get("FAN_PWM_PATH", "/sys/class/hwmon/hwmon4/pwm3")
-FAN_PWM_ENABLE_PATH = os.environ.get("FAN_PWM_ENABLE_PATH", FAN_PWM_PATH + "_enable")
-FAN_INPUT_PATH = os.environ.get("FAN_INPUT_PATH", "/sys/class/hwmon/hwmon4/fan3_input")
-CPU_TEMP_PATH = os.environ.get("CPU_TEMP_PATH", "/sys/class/hwmon/hwmon4/temp1_input")
+FAN_HWMON_NAME = os.environ.get("FAN_HWMON_NAME", "").strip()
+FAN_HWMON_REGEX = os.environ.get("FAN_HWMON_REGEX", r"^it[0-9]+$").strip()
+FAN_PWM_CHANNEL = os.environ.get("FAN_PWM_CHANNEL", "3").strip()
+AUTO_DISCOVER_HWMON = os.environ.get("AUTO_DISCOVER_HWMON", "1") == "1"
+FAN_PWM_PATH = os.environ.get("FAN_PWM_PATH", "").strip()
+FAN_PWM_ENABLE_PATH = os.environ.get("FAN_PWM_ENABLE_PATH", "").strip()
+FAN_INPUT_PATH = os.environ.get("FAN_INPUT_PATH", "").strip()
+CPU_TEMP_PATH = os.environ.get("CPU_TEMP_PATH", "").strip()
 
 # Comma-separated temp:pwm points. Temperatures are Celsius; PWM is 0..255.
 # The HDD curve is intentionally conservative and fails to MAX_PWM.
@@ -78,6 +83,12 @@ def _write(path, value):
     try:
         with open(path, "w") as f:
             f.write(str(value) + "\n")
+    except PermissionError as e:
+        log(
+            f"sysfs write failed: {path}={value!r}: {e}; "
+            "check FAN_HWMON_NAME/FAN_PWM_CHANNEL or set FAN_PWM_PATH manually"
+        )
+        return False
     except OSError as e:
         log(f"sysfs write failed: {path}={value!r}: {e}")
         return False
@@ -87,6 +98,10 @@ def _write(path, value):
 def set_fan_pwm(pwm):
     pwm = int(clamp(pwm, 0, 255))
     dbg(f"Fan PWM -> {pwm}")
+
+    if not FAN_PWM_PATH:
+        log("FAN_PWM_PATH is not configured and hwmon auto-discovery did not resolve it")
+        return False
 
     if os.path.exists(FAN_PWM_ENABLE_PATH):
         _write(FAN_PWM_ENABLE_PATH, MANUAL_PWM_ENABLE_VALUE)
@@ -101,6 +116,10 @@ def set_fan_pwm(pwm):
 
 
 def set_fan_auto():
+    if not FAN_PWM_ENABLE_PATH:
+        log("FAN_PWM_ENABLE_PATH is not configured and hwmon auto-discovery did not resolve it")
+        return False
+
     ok = _write(FAN_PWM_ENABLE_PATH, AUTO_PWM_ENABLE_VALUE)
     if ok:
         log(f"fan pwm control reset to auto: {FAN_PWM_ENABLE_PATH}={AUTO_PWM_ENABLE_VALUE}")
@@ -108,6 +127,8 @@ def set_fan_auto():
 
 
 def read_int(path):
+    if not path:
+        return None
     try:
         with open(path) as f:
             return int(f.read().strip())
@@ -120,6 +141,115 @@ def read_temp_c(path):
     if raw is None:
         return None
     return normalize_temp(raw)
+
+
+def read_text(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def hwmon_dir_for(path):
+    if not path:
+        return None
+
+    directory = os.path.dirname(path)
+    if os.path.basename(directory).startswith("hwmon"):
+        return directory
+    return None
+
+
+def hwmon_name(hwmon_dir):
+    if not hwmon_dir:
+        return None
+    return read_text(os.path.join(hwmon_dir, "name"))
+
+
+def hwmon_name_matches(name):
+    if not name:
+        return False
+
+    if FAN_HWMON_NAME and name == FAN_HWMON_NAME:
+        return True
+
+    if FAN_HWMON_REGEX:
+        try:
+            return re.search(FAN_HWMON_REGEX, name) is not None
+        except re.error as e:
+            log(f"invalid FAN_HWMON_REGEX={FAN_HWMON_REGEX!r}: {e}")
+            return False
+
+    return False
+
+
+def find_hwmon():
+    if not FAN_HWMON_NAME and not FAN_HWMON_REGEX:
+        return None
+
+    for hwmon_dir in sorted(glob.glob("/sys/class/hwmon/hwmon*")):
+        if hwmon_name_matches(hwmon_name(hwmon_dir)):
+            return hwmon_dir
+    return None
+
+
+def configured_fan_paths_are_usable():
+    if not FAN_PWM_PATH or not FAN_INPUT_PATH:
+        return False
+
+    if not os.path.exists(FAN_PWM_PATH) or not os.path.exists(FAN_INPUT_PATH):
+        return False
+
+    if FAN_PWM_ENABLE_PATH and not os.path.exists(FAN_PWM_ENABLE_PATH):
+        return False
+
+    if FAN_HWMON_NAME or FAN_HWMON_REGEX:
+        configured_hwmon = hwmon_dir_for(FAN_PWM_PATH)
+        if not hwmon_name_matches(hwmon_name(configured_hwmon)):
+            return False
+
+    return True
+
+
+def resolve_host_hwmon_paths():
+    global FAN_PWM_PATH, FAN_PWM_ENABLE_PATH, FAN_INPUT_PATH, CPU_TEMP_PATH
+
+    if not AUTO_DISCOVER_HWMON or configured_fan_paths_are_usable():
+        return
+
+    hwmon_dir = find_hwmon()
+    if not hwmon_dir:
+        dbg(
+            "Could not find matching fan hwmon device "
+            f"(FAN_HWMON_NAME={FAN_HWMON_NAME!r}, FAN_HWMON_REGEX={FAN_HWMON_REGEX!r}); "
+            "using configured fan paths"
+        )
+        return
+
+    channel = FAN_PWM_CHANNEL
+    if not channel.isdigit():
+        log(f"invalid FAN_PWM_CHANNEL={channel!r}; expected a numeric pwm/fan channel")
+        return
+
+    pwm_path = os.path.join(hwmon_dir, f"pwm{channel}")
+    pwm_enable_path = os.path.join(hwmon_dir, f"pwm{channel}_enable")
+    fan_input_path = os.path.join(hwmon_dir, f"fan{channel}_input")
+    cpu_temp_path = os.path.join(hwmon_dir, "temp1_input")
+
+    FAN_PWM_PATH = pwm_path
+    FAN_PWM_ENABLE_PATH = pwm_enable_path
+    FAN_INPUT_PATH = fan_input_path
+
+    if not CPU_TEMP_PATH or not os.path.exists(CPU_TEMP_PATH):
+        CPU_TEMP_PATH = cpu_temp_path
+
+    dbg(
+        "Host hwmon paths resolved: "
+        f"hwmon={hwmon_dir}, name={hwmon_name(hwmon_dir)}, channel={channel}, pwm={FAN_PWM_PATH}, "
+        f"pwm_enable={FAN_PWM_ENABLE_PATH}, fan_input={FAN_INPUT_PATH}, "
+        f"cpu_temp={CPU_TEMP_PATH}"
+    )
 
 
 def parse_curve(name, spec):
@@ -287,6 +417,8 @@ def main():
     mode.add_argument("--start", action="store_true", help="run continuously instead of polling once")
     mode.add_argument("--stop", action="store_true", help="reset the fan PWM controller to automatic mode and exit")
     args = parser.parse_args()
+
+    resolve_host_hwmon_paths()
 
     if args.stop:
         sys.exit(0 if set_fan_auto() else 1)
