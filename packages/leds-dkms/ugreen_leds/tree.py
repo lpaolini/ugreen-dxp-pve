@@ -22,7 +22,7 @@ def scan(run_root):
     """Return {led: [(producer, raw_content), ...]} sorted by producer.
 
     Dot files (in-progress atomic writes) and non-regular files are skipped, as
-    are files that vanish while scanning.
+    are entries that vanish or change type while scanning.
     """
     result = {}
     for directory in producer_dirs(run_root):
@@ -30,7 +30,7 @@ def scan(run_root):
         try:
             with os.scandir(directory) as it:
                 entries = sorted(it, key=lambda entry: entry.name)
-        except FileNotFoundError:
+        except OSError:  # removed or replaced while scanning
             continue
         for entry in entries:
             if entry.name.startswith(".") or not entry.is_file(follow_symlinks=False):
@@ -38,7 +38,7 @@ def scan(run_root):
             try:
                 with open(entry.path, encoding="utf-8", errors="replace") as f:
                     raw = f.read(MAX_STATE_BYTES)
-            except FileNotFoundError:
+            except OSError:  # removed or replaced while scanning
                 continue
             result.setdefault(entry.name, []).append((producer, raw))
     return result

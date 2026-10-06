@@ -41,10 +41,9 @@ def resolve(scanned, config):
                 valid.append((producer, state))
         contributors[led_name] = valid
         if valid:
-            producer, state = min(
+            _, states[led_name] = min(
                 valid, key=lambda item: (-config.states[item[1]].priority, item[0])
             )
-            states[led_name] = state
         else:
             states[led_name] = led.default
 

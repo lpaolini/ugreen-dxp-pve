@@ -66,6 +66,10 @@ class BuildTest(unittest.TestCase):
             "bool priority": {"leds": MINIMAL["leds"], "states": {"NORMAL": {"priority": True}}},
             "bad state name": {"leds": MINIMAL["leds"],
                                "states": {**MINIMAL["states"], "BAD NAME": {"priority": 0}}},
+            "states not a table": {"leds": MINIMAL["leds"], "states": 1},
+            "leds not a table": {"leds": [{"path": "/x"}], "states": MINIMAL["states"]},
+            "bind not a table": {**MINIMAL, "bind": 1},
+            "unknown bind key": {**MINIMAL, "bind": {"i2c-bus": 1}},
         }
         for label, data in cases.items():
             with self.subTest(label), self.assertRaises(ConfigError):
@@ -78,6 +82,9 @@ class BuildTest(unittest.TestCase):
             "brightness range": {"brightness": 256},
             "brightness type": {"brightness": "255"},
             "path traversal": {"../color": "1"},
+            "trailing newline in name": {"trigger\n": "none"},
+            "trailing newline in value": {"blink_type": "none\n"},
+            "integer color": {"color": 100000},
             "float": {"interval": 1.5},
         }
         for label, table in cases.items():
@@ -126,6 +133,14 @@ color = "#ff0000"
         with self.assertRaises(ConfigError) as ctx:
             load_config([path])
         self.assertIn("broken.toml", str(ctx.exception))
+
+    def test_unreadable_files_raise_config_error(self):
+        not_utf8 = os.path.join(self.tmp.name, "latin1.toml")
+        with open(not_utf8, "wb") as f:
+            f.write(b"# caf\xe9\n")
+        for path in (not_utf8, self.tmp.name):  # invalid UTF-8, a directory
+            with self.subTest(path=path), self.assertRaises(ConfigError):
+                load_config([path])
 
 
 if __name__ == "__main__":

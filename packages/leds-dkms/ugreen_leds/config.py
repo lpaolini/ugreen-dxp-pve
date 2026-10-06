@@ -9,9 +9,10 @@ from .color import normalize_color
 OVERRIDES_PATH = "/etc/ugreen-dxp-pve-leds.toml"
 DEFAULT_PATHS = ("/usr/share/ugreen-dxp-pve-leds/leds.toml", OVERRIDES_PATH)
 
-_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
-_ATTR = re.compile(r"^[a-z0-9_]+$")
-_BLINK = re.compile(r"^(none|(blink|breath) \d+ \d+)$")
+# Used with fullmatch(): `$` would also accept a trailing newline.
+_NAME = re.compile(r"[A-Za-z0-9_-]+")
+_ATTR = re.compile(r"[a-z0-9_]+")
+_BLINK = re.compile(r"none|(blink|breath) [0-9]+ [0-9]+")
 
 
 class ConfigError(Exception):
@@ -70,7 +71,7 @@ def load_config(paths=None):
                 layer = tomllib.load(f)
         except FileNotFoundError:
             continue
-        except tomllib.TOMLDecodeError as e:
+        except (OSError, ValueError) as e:  # unreadable, not UTF-8, or invalid TOML
             raise ConfigError(f"{path}: {e}") from None
         data = deep_merge(data, layer)
     return build(data)
@@ -78,30 +79,43 @@ def load_config(paths=None):
 
 def build(data):
     """Validate merged TOML data and return a Config."""
-    unknown = sorted(set(data) - {"bind", "leds", "states"})
-    if unknown:
-        raise ConfigError(f"unknown top-level keys: {', '.join(unknown)}")
+    _reject_unknown("top level", data, {"bind", "leds", "states"})
 
     states = {
         name: _build_state(name, table)
-        for name, table in data.get("states", {}).items()
+        for name, table in _table(data, "states").items()
     }
     leds = {
         name: _build_led(name, table, states)
-        for name, table in data.get("leds", {}).items()
+        for name, table in _table(data, "leds").items()
     }
     if not leds:
         raise ConfigError("no [leds.*] tables configured")
 
-    i2c_bus = data.get("bind", {}).get("i2c_bus")
+    bind = _table(data, "bind")
+    _reject_unknown("bind", bind, {"i2c_bus"})
+    i2c_bus = bind.get("i2c_bus")
     if i2c_bus is not None and not (_is_int(i2c_bus) and i2c_bus >= 0):
         raise ConfigError("bind.i2c_bus must be a non-negative integer")
 
     return Config(leds=leds, states=states, i2c_bus=i2c_bus)
 
 
+def _table(data, key):
+    table = data.get(key, {})
+    if not isinstance(table, dict):
+        raise ConfigError(f"[{key}] must be a table")
+    return table
+
+
+def _reject_unknown(where, table, allowed):
+    extra = sorted(set(table) - allowed)
+    if extra:
+        raise ConfigError(f"{where}: unknown keys {', '.join(extra)}")
+
+
 def _check_table(kind, name, table):
-    if not _NAME.match(name):
+    if not _NAME.fullmatch(name):
         raise ConfigError(f"invalid {kind} name {name!r}: use letters, digits, '_' or '-'")
     if not isinstance(table, dict):
         raise ConfigError(f"{kind}s.{name} must be a table")
@@ -115,9 +129,7 @@ def _build_led(name, table, states):
     default = table.get("default")
     if default not in states:
         raise ConfigError(f"leds.{name}.default must name a configured state, got {default!r}")
-    extra = sorted(set(table) - {"path", "default"})
-    if extra:
-        raise ConfigError(f"leds.{name}: unknown keys {', '.join(extra)}")
+    _reject_unknown(f"leds.{name}", table, {"path", "default"})
     return Led(path=path, default=default)
 
 
@@ -131,18 +143,20 @@ def _build_state(name, table):
     for key, value in table.items():
         if key == "priority":
             continue
-        if not _ATTR.match(key):
+        if not _ATTR.fullmatch(key):
             raise ConfigError(f"states.{name}: invalid attribute name {key!r}")
         if isinstance(value, bool):
             value = int(value)  # TOML true/false -> sysfs 1/0
         if not isinstance(value, (str, int)):
             raise ConfigError(f"states.{name}.{key} must be a string or an integer")
         if key == "color":
+            if not isinstance(value, str):
+                raise ConfigError(f"states.{name}.color must be a string")
             try:
                 value = normalize_color(value)
             except ValueError as e:
                 raise ConfigError(f"states.{name}.color: {e}") from None
-        elif key == "blink_type" and not _BLINK.match(str(value)):
+        elif key == "blink_type" and not _BLINK.fullmatch(str(value)):
             raise ConfigError(
                 f"states.{name}.blink_type must be 'none', 'blink ON OFF' or 'breath ON OFF'"
             )

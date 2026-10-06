@@ -81,80 +81,94 @@ tx = 1
 rx = 1
 interval = 50
 
-# Disk LEDs (published by ugreen-truenas-zfs.service)
+# Disk LEDs (published by ugreen-truenas-zfs.service). `trigger = "none"`
+# drops the driver's default oneshot trigger.
 
 [states.OFF]
 priority = 0
+trigger = "none"
 color = "0 0 0"
 blink_type = "none"
 brightness = 1
 
 [states.ONLINE]
 priority = 10
+trigger = "none"
 color = "0 40 0"
 blink_type = "none"
 brightness = 255
 
 [states.SPINDOWN]
 priority = 11
+trigger = "none"
 color = "0 40 0"
 blink_type = "breath 2000 0"
 brightness = 255
 
 [states.ONLINE_ALERT]
 priority = 20
+trigger = "none"
 color = "0 40 0"
 blink_type = "blink 500 500"
 brightness = 255
 
 [states.CHECKING]
 priority = 25
+trigger = "none"
 blink_type = "blink 100 100"
 
 [states.OFFLINE]
 priority = 30
+trigger = "none"
 color = "80 0 0"
 blink_type = "blink 500 500"
 brightness = 255
 
 [states.RESILVER]
 priority = 35
+trigger = "none"
 color = "80 80 80"
 blink_type = "blink 500 500"
 brightness = 255
 
 [states.DEGRADED]
 priority = 40
+trigger = "none"
 color = "80 40 0"
 blink_type = "blink 500 500"
 brightness = 255
 
 [states.MISSING]
 priority = 45
+trigger = "none"
 color = "40 0 40"
 blink_type = "blink 500 500"
 brightness = 255
 
 [states.REMOVED]
 priority = 50
+trigger = "none"
 color = "80 0 0"
 blink_type = "blink 500 500"
 brightness = 255
 
 [states.UNAVAIL]
 priority = 60
+trigger = "none"
 color = "80 0 0"
 blink_type = "blink 500 500"
 brightness = 255
 
 [states.ERROR]
 priority = 65
+trigger = "none"
 color = "80 0 0"
 blink_type = "none"
 brightness = 255
 
 [states.FAULTED]
 priority = 70
+trigger = "none"
 color = "80 0 0"
 blink_type = "blink 500 500"
 brightness = 255

@@ -25,12 +25,13 @@ class PackagedConfigTest(unittest.TestCase):
                  "RESILVER", "DEGRADED", "MISSING", "REMOVED", "UNAVAIL", "ERROR", "FAULTED"]
         self.assertEqual(sorted(order, key=p.__getitem__), order)
 
-    def test_disk_states_keep_the_zfs_write_order(self):
+    def test_disk_states_clear_the_trigger_then_keep_the_zfs_write_order(self):
         config = load_config([os.path.join(DATA, "leds.toml")])
         self.assertEqual(config.states["DEGRADED"].attrs,
-                         (("color", "80 40 0"), ("blink_type", "blink 500 500"),
-                          ("brightness", "255")))
-        self.assertEqual(config.states["CHECKING"].attrs, (("blink_type", "blink 100 100"),))
+                         (("trigger", "none"), ("color", "80 40 0"),
+                          ("blink_type", "blink 500 500"), ("brightness", "255")))
+        self.assertEqual(config.states["CHECKING"].attrs,
+                         (("trigger", "none"), ("blink_type", "blink 100 100")))
 
 
 if __name__ == "__main__":

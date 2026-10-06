@@ -33,12 +33,9 @@ class ResolveTest(unittest.TestCase):
         self.assertEqual(result.contributors["disk1"], [("smart", "FAULTED"), ("zfs", "ONLINE")])
 
     def test_tie_goes_to_first_producer_name(self):
-        config = make_config()
-        scanned = {"power": [("b", "NORMAL\n"), ("a", "NORMAL\n")]}
-        self.assertEqual(resolve(scanned, config).states["power"], "NORMAL")
         # Equal priority, different states: alphabetical producer wins.
         scanned = {"disk1": [("zfs", "OFF\n"), ("alpha", "NORMAL\n")]}
-        self.assertEqual(resolve(scanned, config).states["disk1"], "NORMAL")
+        self.assertEqual(resolve(scanned, self.config).states["disk1"], "NORMAL")
 
     def test_invalid_entries_are_ignored_and_reported(self):
         scanned = {

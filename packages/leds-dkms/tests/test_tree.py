@@ -31,6 +31,12 @@ class TreeTest(unittest.TestCase):
             "power": [("fan", "FAULT\n")],
         })
 
+    def test_scan_skips_unreadable_entries(self):
+        self.write("zfs/disk1", "ONLINE\n")
+        os.symlink("/nonexistent", os.path.join(self.root, "zfs", "disk2"))
+        os.mkfifo(os.path.join(self.root, "zfs", "disk3"))
+        self.assertEqual(scan(self.root), {"disk1": [("zfs", "ONLINE\n")]})
+
     def test_scan_skips_dotfiles_dot_dirs_and_subdirs(self):
         self.write("zfs/.disk1.tmp", "ONLINE\n")
         self.write(".hidden/power", "FAULT\n")
