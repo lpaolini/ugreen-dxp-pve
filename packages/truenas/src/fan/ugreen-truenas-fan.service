@@ -6,6 +6,7 @@ Conflicts=fancontrol.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/ugreen-dxp-pve-truenas-fan.conf
+RuntimeDirectory=ugreen-dxp-pve/fan
 ExecStart=/usr/local/bin/ugreen-truenas-fan.py --start
 ExecStopPost=/usr/local/bin/ugreen-truenas-fan.py --stop
 Restart=on-failure

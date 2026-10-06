@@ -5,8 +5,8 @@ After=pve-guests.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/ugreen-dxp-pve-truenas-zfs.conf
+RuntimeDirectory=ugreen-dxp-pve/zfs
 ExecStart=/usr/local/bin/ugreen-truenas-zfs.py --start
-ExecStopPost=/usr/local/bin/ugreen-truenas-zfs.py --stop
 Restart=on-failure
 RestartSec=10s
 Nice=10

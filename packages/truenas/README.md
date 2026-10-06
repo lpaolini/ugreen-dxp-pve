@@ -24,12 +24,11 @@ There are two services:
   PWM value from the configured disk and CPU fan curves, and writes that value to
   the UGREEN fan PWM sysfs path on the Proxmox host. If temperature collection
   fails, it uses the configured failsafe PWM. If the fan PWM path cannot be
-  controlled, it raises a `fan_control` flag with the power LED helper until a
-  later PWM write succeeds.
+  controlled, it publishes the `FAULT` state for the power LED until a later
+  PWM write succeeds.
 - `ugreen-truenas-zfs.service` polls `lsblk` and `zpool status -pj` inside the
   TrueNAS VM, maps the VM's disks back to the four physical UGREEN bays, and
-  drives `/sys/class/leds/ugreen:white:disk1` through
-  `/sys/class/leds/ugreen:white:disk4` to show ZFS
+  publishes a state for LEDs `disk1` through `disk4` to show ZFS
   health, spindown/standby state, missing disks, and resilvering for any pool
   associated with those bays.
 
@@ -44,15 +43,14 @@ ID. Uncomment it and set it to the Proxmox VM ID of your TrueNAS Scale VM before
 starting the services. If `VMID` is not configured, the services exit instead of
 guessing.
 
-Edit those files when your hwmon paths, LED paths, fan curves, ZFS bay mapping,
+Edit those files when your hwmon paths, fan curves, ZFS bay mapping,
 or polling interval differ from the tested DXP 4800 PRO layout. The fan helper
 auto-discovers the `/sys/class/hwmon/hwmon*` directory whose `name` matches an
 ITE chip exposed by the it87 driver, such as `it8613`, and then uses
 `FAN_PWM_CHANNEL` to build the PWM, PWM enable, and fan RPM paths.
 The most commonly adjusted settings are `VMID`, `POLL_INTERVAL`,
 `FAN_HWMON_REGEX`, `FAN_HWMON_NAME`, `FAN_PWM_CHANNEL`, `CPU_TEMP_PATH`,
-`HDD_FAN_CURVE`, `CPU_FAN_CURVE`, `TEMP_CHIP_REGEX`, `POWER_LED_HELPER`,
-`POWER_LED_FAULT_NAME`, `LED_1_PATH` through `LED_4_PATH`, `ALERT_THRESHOLD`,
+`HDD_FAN_CURVE`, `CPU_FAN_CURVE`, `TEMP_CHIP_REGEX`, `ALERT_THRESHOLD`,
 and the `BAY_1_PATH` through `BAY_4_PATH` values. If auto-discovery does not
 fit your system, pin `FAN_PWM_PATH`, `FAN_PWM_ENABLE_PATH`, and
 `FAN_INPUT_PATH` explicitly.
@@ -61,8 +59,8 @@ fit your system, pin `FAN_PWM_PATH`, `FAN_PWM_ENABLE_PATH`, and
 
 - Proxmox running directly on the UGREEN DXP host.
 - TrueNAS Scale 25 or newer running as a Proxmox VM.
-- `ugreen-dxp-pve-leds-dkms` installed on the Proxmox host, so disk LEDs are
-  exposed under `/sys/class/leds/ugreen:white:disk*`.
+- `ugreen-dxp-pve-leds-dkms` 0.4.0 or later installed on the Proxmox host; its
+  `ugreen-dxp-pve-leds.service` renders the LED states these services publish.
 - `ugreen-dxp-pve-it87-dkms` installed on the Proxmox host, so fan PWM controls
   are exposed through hwmon sysfs.
 - `hdparm` available inside the TrueNAS VM if you want the ZFS LED service to
@@ -73,9 +71,9 @@ fit your system, pin `FAN_PWM_PATH`, `FAN_PWM_ENABLE_PATH`, and
 
 Before installing this package directly, install the UGREEN DXP LED and it87
 DKMS packages from [`lpaolini/ugreen-dxp`](https://github.com/lpaolini/ugreen-dxp)
-on the Proxmox host. This is required because `ugreen-truenas-zfs.service`
-writes to the disk LED sysfs devices and `ugreen-truenas-fan.service` writes to
-the fan PWM sysfs controls exposed by those DKMS packages.
+on the Proxmox host. This is required because both services publish LED states
+to `ugreen-dxp-pve-leds.service`, and `ugreen-truenas-fan.service` writes to
+the fan PWM sysfs controls exposed by the it87 package.
 
 The DKMS packages are published in the unified signed Debian repository and as
 direct `.deb` downloads:
@@ -160,6 +158,10 @@ that the matching `pwmN_enable` file exists. Try a different `FAN_PWM_CHANNEL`,
 usually `2` or `3`, before pinning absolute `hwmonN` paths.
 
 ## LED showcase
+
+The ZFS service publishes these state names. Their colours and effects are
+defined on the host in `/usr/share/ugreen-dxp-pve-leds/leds.toml` and can be
+overridden in `/etc/ugreen-dxp-pve-leds.toml`.
 
 |  | State | Description | Color | Effect |
 | --- | --- | --- | --- | --- |

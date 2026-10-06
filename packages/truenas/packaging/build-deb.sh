@@ -13,6 +13,8 @@ fi
 # Debian versions cannot include the common Git tag prefix.
 VERSION="${VERSION#v}"
 
+(cd "${PACKAGE_ROOT}" && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=../leds-dkms python3 -m unittest discover -s tests -t .)
+
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "${BUILD_DIR}"' EXIT
 
@@ -49,7 +51,7 @@ Section: utils
 Priority: optional
 Architecture: all
 Maintainer: lpaolini <lpaolini@users.noreply.github.com>
-Depends: python3, systemd, qemu-server, ugreen-dxp-pve-leds-dkms, ugreen-dxp-pve-it87-dkms
+Depends: python3 (>= 3.11), systemd, qemu-server, ugreen-dxp-pve-leds-dkms (>= 0.4.0~), ugreen-dxp-pve-it87-dkms
 Provides: ugreen-dxp-proxmox-truenas
 Conflicts: ugreen-dxp-proxmox-truenas
 Replaces: ugreen-dxp-proxmox-truenas
@@ -99,7 +101,6 @@ if [ "${1:-}" = "remove" ] || [ "${1:-}" = "deconfigure" ]; then
     systemctl disable --now ugreen-truenas-zfs.service || true
     systemctl disable --now ugreen-truenas-fan.service || true
   fi
-  /usr/bin/ugreen-truenas-zfs.py --stop || true
   /usr/bin/ugreen-truenas-fan.py --stop || true
 fi
 PRERM
