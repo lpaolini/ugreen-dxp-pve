@@ -108,6 +108,22 @@ To install only the kernel modules:
 apt install ugreen-dxp-pve-leds-dkms ugreen-dxp-pve-it87-dkms
 ```
 
+### Testing development builds
+
+Every commit to the `dev` branch is published to a separate `dev` channel of the
+same repository. To try it on a test host, add a second source line:
+
+```bash
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/ugreen-dxp-pve dev main" | tee /etc/apt/sources.list.d/ugreen-dxp-pve-dev.list
+apt update && apt upgrade
+```
+
+Development versions look like `0.9.10+dev5.gabc1234` (5 commits after
+`v0.9.10`): newer than the last release, older than the next one. To go back to
+stable, delete `ugreen-dxp-pve-dev.list`, run `apt update`, and reinstall the
+stable versions explicitly (apt never downgrades on its own), for example
+`apt install ugreen-dxp-pve-truenas=0.9.10 ugreen-dxp-pve-leds-dkms=0.9.10 ugreen-dxp-pve-it87-dkms=0.9.10`.
+
 ### Configuration files
 
 - `/etc/ugreen-dxp-pve-leds.toml` (optional LED overrides)
@@ -137,7 +153,8 @@ packages/
   truenas/       Proxmox/TrueNAS helper package
 packaging/
   build-all.sh         Build all .deb packages into dist/
-  build-repository.sh  Build an APT repository from dist/
+  build-repository.sh  Build an APT repository with one suite per channel
+  version.sh           Derive the package version from git tags
 ```
 
 ## Build Locally
@@ -149,16 +166,18 @@ apt-get update
 apt-get install -y build-essential debhelper dh-dkms dkms dpkg-dev fakeroot apt-utils gnupg
 ```
 
-Build all packages using one Debian version:
+Build all packages; the version defaults to the one derived from git
+(`packaging/version.sh`), or pass one explicitly:
 
 ```bash
-./packaging/build-all.sh 0.4.0 dist
+./packaging/build-all.sh "" dist
+./packaging/build-all.sh 0.10.0 dist
 ```
 
-Build an unsigned local APT repository:
+Build an unsigned local APT repository with a `stable` suite:
 
 ```bash
-./packaging/build-repository.sh dist public
+./packaging/build-repository.sh public http://localhost:8000 stable=dist
 ```
 
 The package files will be in `dist/`, and the APT repository tree will be in
@@ -166,14 +185,19 @@ The package files will be in `dist/`, and the APT repository tree will be in
 
 ## Forking
 
-The `Build Debian packages` workflow runs on every `v*` tag push and uploads
-the generated `.deb` files as GitHub Actions artifacts. It can also be run
-manually with an explicit Debian version.
+The `Debian packages` workflow (`.github/workflows/debian.yml`) builds, tests
+and lints all packages on every push and pull request. It publishes only from
+two places:
 
-The `Publish Debian repository` workflow runs on `v*` tag pushes and manual
-dispatch with an explicit version. It builds all three packages, creates signed
-APT metadata, publishes the repository to GitHub Pages, and uploads `.deb`
-files to GitHub Releases for tagged builds.
+| Trigger | Version | GitHub release | APT suite |
+| --- | --- | --- | --- |
+| Push to `dev` | `X.Y.Z+devN.g<sha>` | rolling `dev` pre-release, replaced on every push | `dev` |
+| Tag `vX.Y.Z` on `main` | `X.Y.Z` | `vX.Y.Z` | `stable` |
+
+Every deployment rebuilds the whole GitHub Pages site from the latest stable
+release and the `dev` pre-release, so publishing one channel never drops the
+other. Running the workflow manually rebuilds the site without publishing
+anything new.
 
 Before the publish workflow can create the signed APT repository, configure
 GitHub Pages and add the signing key secrets:
@@ -182,7 +206,8 @@ GitHub Pages and add the signing key secrets:
 - `APT_SIGNING_PASSPHRASE`: optional passphrase for the private key.
 
 In GitHub, open `Settings -> Pages` and set `Build and deployment -> Source` to
-`GitHub Actions`.
+`GitHub Actions`. Then open `Settings -> Environments -> github-pages` and make
+sure `Deployment branches and tags` allows the `dev` branch and `v*` tags.
 
 Create a signing key locally:
 
@@ -196,13 +221,17 @@ Paste the exported private key into `Settings -> Secrets and variables ->
 Actions -> New repository secret` as `APT_SIGNING_KEY`. If the key has a
 passphrase, add it as `APT_SIGNING_PASSPHRASE`.
 
-For stable releases:
+Day to day, merge work into `dev` and test it from the `dev` channel. To
+release a tested `dev` commit as stable:
 
 ```bash
-git tag v0.9.1
-git push origin main
-git push origin v0.9.1
+git switch main
+git merge --ff-only dev
+git tag v0.10.0
+git push origin main v0.10.0
 ```
+
+The workflow refuses release tags that are not on `main`.
 
 After the workflow completes, the repository is available at:
 

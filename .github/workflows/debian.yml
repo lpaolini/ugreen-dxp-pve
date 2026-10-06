@@ -1,0 +1,166 @@
+name: Debian packages
+
+# Every push and pull request is built and checked.
+#   push to dev       -> rolling "dev" pre-release -> APT suite "dev"
+#   tag vX.Y.Z (main) -> GitHub release vX.Y.Z    -> APT suite "stable"
+#   manual run        -> rebuild the APT repository from the existing releases
+# The repository is always rebuilt from both release channels, because every
+# Pages deployment replaces the whole site.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.version.outputs.channel }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # version.sh needs the tags and history
+
+      - name: Resolve version and channel
+        id: version
+        shell: bash
+        run: |
+          version="$(./packaging/version.sh)"
+          channel=none
+          if [[ "${GITHUB_EVENT_NAME}" = push && "${GITHUB_REF_TYPE}" = tag ]]; then
+            if [[ "${version}" != "${GITHUB_REF_NAME#v}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME} does not resolve to a release version (got ${version})" >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+              echo "Release tags must point to a commit on main" >&2
+              exit 1
+            fi
+            channel=stable
+          elif [[ "${GITHUB_EVENT_NAME}" = push && "${GITHUB_REF}" = refs/heads/dev ]]; then
+            channel=dev
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "channel=${channel}" >> "${GITHUB_OUTPUT}"
+          echo "Building ${version} (channel: ${channel})"
+
+      - name: Install Debian tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            apt-utils build-essential debhelper dh-dkms dkms dpkg-dev \
+            fakeroot lintian shellcheck python3
+
+      - name: Build Debian packages
+        run: ./packaging/build-all.sh "${{ steps.version.outputs.version }}" dist
+
+      - name: Run package checks
+        run: |
+          shellcheck \
+            packaging/build-all.sh \
+            packaging/build-repository.sh \
+            packaging/version.sh \
+            packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.postinst \
+            packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.postrm \
+            packages/it87-dkms/debian/ugreen-dxp-pve-it87-dkms.postinst \
+            packages/truenas/packaging/build-deb.sh
+          lintian --profile debian -EvIL +pedantic dist/*.deb
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: debs
+          path: dist/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+  # Releasing and deploying run as one serialized job, so a newer dev push can
+  # never replace the dev release while an older run is still deploying it.
+  publish:
+    needs: build
+    if: needs.build.outputs.channel != 'none' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CHANNEL: ${{ needs.build.outputs.channel }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download packages
+        if: env.CHANNEL != 'none'
+        uses: actions/download-artifact@v4
+        with:
+          name: debs
+          path: dist
+
+      - name: Publish stable release
+        if: env.CHANNEL == 'stable'
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 ||
+            gh release create "${GITHUB_REF_NAME}" --verify-tag --generate-notes --title "${GITHUB_REF_NAME}"
+          gh release upload "${GITHUB_REF_NAME}" dist/*.deb --clobber
+
+      - name: Publish rolling dev pre-release
+        if: env.CHANNEL == 'dev'
+        run: |
+          gh release delete dev --cleanup-tag --yes 2>/dev/null || true
+          gh release create dev dist/*.deb --prerelease --latest=false \
+            --target "${GITHUB_SHA}" --title "Development build ${VERSION}" \
+            --notes "Automatic build of ${GITHUB_SHA} from the dev branch. Not for production use."
+
+      - name: Install repository tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apt-utils dpkg-dev gnupg
+
+      - name: Download released packages
+        run: |
+          gh release download --pattern '*.deb' --dir channels/stable  # latest stable release
+          suites=(stable=channels/stable)
+          if gh release download dev --pattern '*.deb' --dir channels/dev; then
+            suites+=(dev=channels/dev)
+          fi
+          echo "SUITES=${suites[*]}" >> "${GITHUB_ENV}"
+
+      - name: Build APT repository
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
+          REQUIRE_APT_SIGNING: "1"
+        run: |
+          # shellcheck disable=SC2086  # SUITES is a list of SUITE=DIR words
+          ./packaging/build-repository.sh public \
+            "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}" ${SUITES}
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

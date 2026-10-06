@@ -7,10 +7,7 @@ VERSION="${1:-}"
 OUT_DIR="${2:-"${ROOT}/dist"}"
 
 if [[ -z "${VERSION}" ]]; then
-  if git -C "${ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    VERSION="$(git -C "${ROOT}" describe --tags --always --dirty 2>/dev/null || true)"
-  fi
-  VERSION="${VERSION:-0.1.0}"
+  VERSION="$("${ROOT}/packaging/version.sh" "${ROOT}")"
 fi
 
 VERSION="${VERSION#v}"
