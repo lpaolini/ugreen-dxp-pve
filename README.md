@@ -43,9 +43,11 @@ Tested on UGREEN DXP-4800 PRO, but should work with minimal/no changes on other 
 
 The DKMS packages expose the UGREEN hardware through normal Linux sysfs
 interfaces on the Proxmox host. The LED package binds the onboard I2C LED
-controller at `0x3a`, loads the standard LED triggers, starts a power LED
-fault-state monitor, and initializes the network and disk LEDs from
-`/etc/ugreen-dxp-pve-leds.conf`.
+controller at `0x3a`, loads the standard LED triggers, and runs
+`ugreen-dxp-pve-leds.service`, the only writer to the LEDs: other services
+publish named states under `/run/ugreen-dxp-pve/` and the daemon renders them
+using `/usr/share/ugreen-dxp-pve-leds/leds.toml` (overridable in
+`/etc/ugreen-dxp-pve-leds.toml`).
 Both DKMS packages load their kernel modules after installation and configure
 systemd modules-load entries so they are loaded again on reboot.
 
@@ -55,12 +57,11 @@ state to host hardware:
 
 - `ugreen-truenas-fan.service` reads disk temperatures from `sensors -j` inside
   TrueNAS, combines them with the host CPU temperature, and writes the selected
-  PWM value to the UGREEN fan sysfs path. If the fan PWM write fails, it raises
-  a `fan_control` flag with the power LED helper; the power LED service watches
-  those flags and displays the configured fault state until all flags clear.
+  PWM value to the UGREEN fan sysfs path. If the fan PWM write fails, it
+  publishes the `FAULT` state for the power LED until a later write succeeds.
 - `ugreen-truenas-zfs.service` reads `lsblk`, `zpool status -pj`, and optional
-  disk standby data, maps VM disks back to physical UGREEN bays, and drives
-  `/sys/class/leds/ugreen:white:disk1` through `disk4`.
+  disk standby data, maps VM disks back to physical UGREEN bays, and publishes
+  a state for LEDs `disk1` through `disk4`.
 
 The TrueNAS package is aimed at Proxmox hosts running TrueNAS Scale as a VM with
 SATA controller passthrough. It has been tested on a DXP 4800 PRO; other DXP
@@ -109,7 +110,7 @@ apt install ugreen-dxp-pve-leds-dkms ugreen-dxp-pve-it87-dkms
 
 ### Configuration files
 
-- `/etc/ugreen-dxp-pve-leds.conf`
+- `/etc/ugreen-dxp-pve-leds.toml` (optional LED overrides)
 - `/etc/ugreen-dxp-pve-truenas-fan.conf` (`VMID` needs to be set)
 - `/etc/ugreen-dxp-pve-truenas-zfs.conf` (`VMID` needs to be set)
 

@@ -60,73 +60,78 @@ file is under `/root`, `apt` may print a harmless `_apt` sandbox warning because
 the `_apt` user cannot read files in `/root`.
 
 The package registers the module with DKMS and configures `i2c-dev`,
-`led-ugreen`, `ledtrig-oneshot`, and `ledtrig-netdev` to load at boot.
-It installs one systemd oneshot service that binds the `led-ugreen` driver to
-the LED controller at I2C address `0x3a`, and a long-running service that
-monitors power LED fault flags and configures `/sys/class/leds/ugreen:white:netdev`,
-plus any present disk LEDs from
-`/sys/class/leds/ugreen:white:disk1` through
-`/sys/class/leds/ugreen:white:disk8`.
+`led-ugreen`, `ledtrig-oneshot`, and `ledtrig-netdev` to load at boot. It
+installs two systemd services:
 
-The LED configuration lives in:
+- `ugreen-dxp-pve-leds-bind.service` binds the `led-ugreen` driver to the LED
+  controller at I2C address `0x3a`, and unbinds it when stopped.
+- `ugreen-dxp-pve-leds.service` is the only process that writes to
+  `/sys/class/leds/ugreen:*`. For each LED it shows the highest-priority state
+  that other services have published, or the LED's default when none has.
+
+### Publishing LED states
+
+A service publishes a state by writing its name into a file:
 
 ```text
-/etc/ugreen-dxp-pve-leds.conf
+/run/ugreen-dxp-pve/<producer>/<led>
 ```
 
-By default, the power LED is set to steady green, and the network LED uses the
-kernel `netdev` trigger for `vmbr0` in blue. Adjust `NETDEV_LED_DEVICE` when
-your Proxmox management bridge or physical interface has a different name.
-Disk LEDs are initialized to steady purple with no activity trigger so the
-later TrueNAS helper starts from a quiet, known state. Set
-`POWER_LED_NORMAL_COLOR`, `NETDEV_LED_COLOR`, and `DISK_LED_COLOR` to change the
-RGB colors. Colors may be written as decimal RGB triplets or six-digit hex
-values:
+`<led>` is `power`, `netdev`, or `disk1` through `disk8`; the file holds one
+state name such as `FAULT` or `DEGRADED`. Give the publishing unit
+`RuntimeDirectory=ugreen-dxp-pve/<producer>`: systemd creates the directory
+(exported as `$RUNTIME_DIRECTORY`) and deletes it when the unit stops, so the
+unit's states disappear with it. Write atomically (write `.<led>.tmp`, then
+rename it over `<led>`); delete the file to withdraw the state.
+
+From a shell, use `ugreen-dxp-led`, which checks LED and state names:
 
 ```sh
-POWER_LED_NORMAL_COLOR="0 64 16"
-NETDEV_LED_COLOR="0 64 255"
-DISK_LED_COLOR="64 0 64"
+ugreen-dxp-led set power FAULT   # into $RUNTIME_DIRECTORY, else /run/ugreen-dxp-pve/manual
+ugreen-dxp-led clear power
+ugreen-dxp-led status            # what each LED shows, and which producers asked for it
 ```
 
-The power LED is rendered by `ugreen-dxp-pve-leds.service`, which watches the
-configured `POWER_LED_STATE_DIR` with inotify. Services should change power LED
-state only by setting or clearing named flags with:
+### Configuring the LEDs
 
-```sh
-/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen
+LEDs and states are defined in `/usr/share/ugreen-dxp-pve-leds/leds.toml`.
+Override any key in `/etc/ugreen-dxp-pve-leds.toml`, then run
+`systemctl reload ugreen-dxp-pve-leds.service`:
+
+```toml
+[states.NETDEV]
+device_name = "vmbr1"   # network LED follows another interface
+
+[states.NORMAL]
+color = "#004010"       # "R G B" or "#rrggbb"
 ```
 
-For example:
+By default the power LED is steady green (`NORMAL`) and blinks red while any
+service publishes `FAULT`; the network LED uses the kernel `netdev` trigger for
+`vmbr0` in blue; disk LEDs stay `OFF` until a service publishes a state for
+them.
+
+### Troubleshooting
+
+If `/sys/class/leds/ugreen:white:power` does not exist, the controller is not
+bound yet:
 
 ```sh
-/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen set-fault fan_control
-/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen clear-fault fan_control
-```
-
-Any active flag switches the power LED to the `POWER_LED_FAULT_*` state. By
-default this is full-brightness red with `blink 500 500`, a 1 second period at
-50% duty cycle. When the last flag clears, the monitor restores the
-`POWER_LED_NORMAL_*` state.
-
-If the module is loaded but `/sys/class/leds/ugreen:white:disk1` does not
-exist, the I2C device has probably not been created yet. Run the helper
-manually:
-
-```sh
-sudo /usr/libexec/ugreen-dxp-pve-leds-dkms/probe-led-ugreen
+systemctl status ugreen-dxp-pve-leds-bind.service
 ls /sys/class/leds
 ```
 
-If the helper tries the wrong bus, list adapters and force the correct bus:
+The controller's bus is found by adapter name at every start. Linux numbers
+I2C buses in driver load order, so the number can change between boots; pin
+it only if auto-detection fails. List the adapters (`i2cdetect -l` from
+`i2c-tools`) and force the bus in `/etc/ugreen-dxp-pve-leds.toml`:
 
-```sh
-i2cdetect -l
-echo I2C_BUS=1 | sudo tee /etc/ugreen-dxp-pve-leds.conf
-sudo /usr/libexec/ugreen-dxp-pve-leds-dkms/probe-led-ugreen
+```toml
+[bind]
+i2c_bus = 1
 ```
 
-Replace `1` with the bus number that owns the LED controller.
+Then run `systemctl restart ugreen-dxp-pve-leds-bind.service`.
 
 ## Build
 
