@@ -1,0 +1,20 @@
+[Unit]
+Description=Bind UGREEN DXP LED I2C controller
+Documentation=https://github.com/lpaolini/ugreen-dxp
+After=systemd-modules-load.service
+# Retry for about a minute at boot, then give up.
+StartLimitIntervalSec=120
+StartLimitBurst=10
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Load the SMBus adapter and LED drivers now instead of waiting for udev.
+ExecStartPre=/sbin/modprobe -a i2c-i801 i2c-dev led-ugreen ledtrig-oneshot ledtrig-netdev
+ExecStart=/usr/libexec/ugreen-dxp-pve-leds/ugreen-dxp-leds-bind bind
+ExecStop=/usr/libexec/ugreen-dxp-pve-leds/ugreen-dxp-leds-bind unbind
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

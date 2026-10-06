@@ -2,6 +2,9 @@
 
 include /usr/share/dpkg/pkg-info.mk
 
+LIBDIR := usr/lib/ugreen-dxp-pve-leds
+LIBEXECDIR := usr/libexec/ugreen-dxp-pve-leds
+
 %:
 	dh $@ --with dkms
 
@@ -9,21 +12,26 @@ override_dh_install:
 	dh_install ugreen-dxp-leds.c usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
 	dh_install ugreen-dxp-leds.h usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
 	dh_install Makefile usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
-	dh_install debian/probe-led-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
-	dh_install debian/configure-led-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
-	dh_install debian/power-led-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
-	dh_install debian/power-led-monitor-ugreen usr/libexec/ugreen-dxp-pve-leds-dkms/
+	dh_install ugreen_leds/*.py $(LIBDIR)/ugreen_leds/
+	dh_install bin/ugreen-dxp-leds-daemon bin/ugreen-dxp-leds-bind $(LIBEXECDIR)/
+	dh_install bin/ugreen-dxp-led usr/bin/
+	dh_install data/leds.toml data/ugreen-dxp-pve-leds.toml usr/share/ugreen-dxp-pve-leds/
 	dh_install debian/led-ugreen.conf etc/modules-load.d/
-	dh_installdirs etc lib/systemd/system
-	install -m 0644 debian/ugreen-dxp-pve-leds.conf debian/ugreen-dxp-pve-leds-dkms/etc/ugreen-dxp-pve-leds.conf
-	install -m 0644 debian/ugreen-dxp-pve-leds.service debian/ugreen-dxp-pve-leds-dkms/lib/systemd/system/ugreen-dxp-pve-leds.service
+
+override_dh_installsystemd:
+	dh_installsystemd --name=ugreen-dxp-pve-leds-bind --no-stop-on-upgrade --no-restart-after-upgrade
+	dh_installsystemd --name=ugreen-dxp-pve-leds
 
 override_dh_dkms:
 	dh_dkms -V $(DEB_VERSION_UPSTREAM)
 
-# Disable build steps (source-only package)
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -t . -v
+endif
+
+# Disable the remaining build-system steps (nothing to configure or compile here)
 override_dh_auto_configure:
 override_dh_auto_build:
-override_dh_auto_test:
 override_dh_auto_install:
 override_dh_auto_clean:

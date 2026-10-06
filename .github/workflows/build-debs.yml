@@ -58,10 +58,7 @@ jobs:
           shellcheck \
             packaging/build-all.sh \
             packaging/build-repository.sh \
-            packages/leds-dkms/debian/probe-led-ugreen \
-            packages/leds-dkms/debian/configure-led-ugreen \
             packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.postinst \
-            packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.prerm \
             packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.postrm \
             packages/it87-dkms/debian/ugreen-dxp-pve-it87-dkms.postinst \
             packages/truenas/packaging/build-deb.sh

@@ -2,7 +2,8 @@
 set -e
 
 if [ "$1" = "purge" ]; then
-    rm -f /etc/ugreen-dxp-pve-leds.conf /etc/default/ugreen-dxp-pve-leds-dkms
+    rm -f /etc/ugreen-dxp-pve-leds.toml /etc/ugreen-dxp-pve-leds.conf.dpkg-bak \
+        /etc/default/ugreen-dxp-pve-leds-dkms
 fi
 
 #DEBHELPER#

@@ -2,7 +2,7 @@ Source: ugreen-dxp-pve-leds-dkms
 Section: kernel
 Priority: optional
 Maintainer: Luca Paolini <lookap@gmail.com>
-Build-Depends: debhelper-compat (= 13), dh-dkms, dkms
+Build-Depends: debhelper-compat (= 13), dh-dkms, dkms, python3 (>= 3.11)
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
 Homepage: https://github.com/lpaolini/ugreen-dxp
@@ -11,8 +11,8 @@ Vcs-Git: https://github.com/lpaolini/ugreen-dxp.git
 
 Package: ugreen-dxp-pve-leds-dkms
 Architecture: all
-Depends: ${misc:Depends}, dkms, pve-headers, python3
-Recommends: i2c-tools
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, dkms, pve-headers, python3 (>= 3.11)
 Provides: ugreen-dxp-leds-dkms, led-ugreen-kernel, led-ugreen-dkms
 Conflicts: ugreen-dxp-leds-dkms, led-ugreen-dkms
 Replaces: ugreen-dxp-leds-dkms, led-ugreen-dkms
@@ -23,3 +23,7 @@ Description: UGREEN DXP LED kernel module (DKMS)
  .
  The module provides sysfs interface for LED control and integrates
  with the kernel LED subsystem, supporting triggers like netdev and oneshot.
+ .
+ It also ships ugreen-dxp-pve-leds.service, the single writer to the LEDs:
+ other services publish named states under /run/ugreen-dxp-pve/ and the
+ daemon renders them using /usr/share/ugreen-dxp-pve-leds/leds.toml.

@@ -1,0 +1,1 @@
+rm_conffile /etc/ugreen-dxp-pve-leds.conf 0.4.0~

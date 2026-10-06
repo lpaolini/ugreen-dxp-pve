@@ -12,6 +12,10 @@ Copyright: 2024 Yuhao Zhou <miskcoo@gmail.com>
 License: GPL-2.0-only
 
 Files: debian/*
+       bin/*
+       data/*
+       tests/*
+       ugreen_leds/*
 Copyright: 2026 Luca Paolini <lookap@gmail.com>
 License: MIT
 

@@ -1,0 +1,2 @@
+# Producers publish LED states under /run/ugreen-dxp-pve/<producer>/<led>.
+d /run/ugreen-dxp-pve 0755 root root -

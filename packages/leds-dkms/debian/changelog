@@ -1,3 +1,22 @@
+ugreen-dxp-pve-leds-dkms (0.4.0) stable; urgency=medium
+
+  * Make ugreen-dxp-pve-leds.service the single writer to the front-panel
+    LEDs. Other services publish named states as files under
+    /run/ugreen-dxp-pve/<producer>/<led>; the daemon picks the highest
+    priority state per LED and renders it.
+  * Move LED looks to /usr/share/ugreen-dxp-pve-leds/leds.toml with local
+    overrides in /etc/ugreen-dxp-pve-leds.toml (replaces
+    /etc/ugreen-dxp-pve-leds.conf; I2C_BUS is migrated).
+  * Split controller binding into ugreen-dxp-pve-leds-bind.service, which
+    also unbinds on stop.
+  * Add ugreen-dxp-led to publish, clear and inspect LED states.
+  * Disk LEDs now default to OFF (previously steady purple) until a service
+    publishes a state for them.
+  * Remove configure-led-ugreen, power-led-monitor-ugreen, power-led-ugreen
+    and probe-led-ugreen.
+
+ -- Luca Paolini <lookap@gmail.com>  Tue, 06 Oct 2026 12:00:00 +0200
+
 ugreen-dxp-pve-leds-dkms (0.3.1) stable; urgency=medium
 
   * Run lintian with the Debian profile in the Ubuntu-based publishing
