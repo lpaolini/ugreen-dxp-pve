@@ -1,0 +1,20 @@
+# Local overrides for ugreen-dxp-pve-leds.service.
+#
+# Package defaults live in /usr/share/ugreen-dxp-pve-leds/leds.toml. A key set
+# here replaces the same key there; everything else keeps the package default.
+#
+# Apply LED changes with:   systemctl reload ugreen-dxp-pve-leds.service
+# Apply [bind] changes with: systemctl restart ugreen-dxp-pve-leds-bind.service
+#
+# Force the I2C bus that owns the LED controller (default: auto-detect by name).
+# Bus numbers can change between boots, so pin one only if detection fails:
+# [bind]
+# i2c_bus = 1
+#
+# Use another interface for the network LED:
+# [states.NETDEV]
+# device_name = "vmbr1"
+#
+# Change the power LED colour ("R G B" or "#rrggbb"):
+# [states.NORMAL]
+# color = "#004010"
