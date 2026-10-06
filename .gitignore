@@ -16,3 +16,4 @@ public/
 Module.symvers
 modules.order
 docs/
+__pycache__/
