@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-# Poll ZFS status inside the TrueNAS VM and drive the UGREEN front-panel LEDs.
-# Requires: qemu-guest-agent running inside TrueNAS and the ugreen LED driver
-# exposing /sys/class/leds/ugreen:white:disk[1-4]/color.
+# Poll ZFS status inside the TrueNAS VM and publish front-panel disk LED states.
+# Requires: qemu-guest-agent running inside TrueNAS and ugreen-dxp-pve-leds.service
+# on the host, which renders the states published under /run/ugreen-dxp-pve/zfs.
 import argparse
 import json
 import os
@@ -12,13 +12,14 @@ import subprocess
 import sys
 import syslog
 import threading
-from dataclasses import dataclass
+
+sys.path.insert(0, "/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
+from ugreen_leds.tree import producer_dir, publish  # noqa: E402
 
 VMID = os.environ.get("VMID", "").strip()
 TAG = "ugreen-truenas-zfs"
 DEBUG = os.environ.get("DEBUG", "1") == "1"
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "30"))
-LEDS_OFF_ON_EXIT = os.environ.get("LEDS_OFF_ON_EXIT", "1") == "1"
 # Bay N is wired to the path shown — UGREEN backplane constant.
 # Verify with `ls -l /dev/disk/by-path/` inside the guest.
 BAYS = {
@@ -26,41 +27,6 @@ BAYS = {
     "2": os.environ.get("BAY_2_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-2"),
     "3": os.environ.get("BAY_3_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-3"),
     "4": os.environ.get("BAY_4_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-4"),
-}
-LED_PATHS = {
-    "1": os.environ.get("LED_1_PATH", "/sys/class/leds/ugreen:white:disk1"),
-    "2": os.environ.get("LED_2_PATH", "/sys/class/leds/ugreen:white:disk2"),
-    "3": os.environ.get("LED_3_PATH", "/sys/class/leds/ugreen:white:disk3"),
-    "4": os.environ.get("LED_4_PATH", "/sys/class/leds/ugreen:white:disk4"),
-}
-
-
-@dataclass(frozen=True)
-class LedState:
-    color: str | None       # e.g. "0 40 0"; None = don't touch
-    blink_type: str | None  # e.g. "blink 500 500", "none", or None = don't touch
-    brightness: int | None  # 0..255; None = don't touch
-
-
-# LED presentation for each state. ZFS leaf-vdev state strings (ONLINE, DEGRADED,
-# FAULTED, UNAVAIL, REMOVED, OFFLINE) double as keys here so apply_disk_leds can
-# use them directly. The four "bad" rows currently share one red-blink presentation
-# but are kept as distinct entries so they can diverge later. The remaining keys
-# (SPINDOWN, RESILVER, MISSING, OFF, CHECKING, ERROR) are script-internal.
-STATES = {
-    "OFF":          LedState("0 0 0",     "none",               1),
-    "CHECKING":     LedState(None,        "blink 100 100",    None),
-    "ONLINE":       LedState("0 40 0",    "none",             255),
-    "SPINDOWN":     LedState("0 40 0",    "breath 2000 0",    255),
-    "ONLINE_ALERT": LedState("0 40 0",    "blink 500 500",    255),
-    "DEGRADED":     LedState("80 40 0",   "blink 500 500",    255),
-    "FAULTED":      LedState("80 0 0",    "blink 500 500",    255),
-    "UNAVAIL":      LedState("80 0 0",    "blink 500 500",    255),
-    "REMOVED":      LedState("80 0 0",    "blink 500 500",    255),
-    "OFFLINE":      LedState("80 0 0",    "blink 500 500",    255),
-    "RESILVER":     LedState("80 80 80",  "blink 500 500",    255),
-    "MISSING":      LedState("40 0 40",   "blink 500 500",    255),
-    "ERROR":        LedState("80 0 0",    "none",             255),
 }
 
 # Severity ordering, so a partition-level FAULTED wins over a disk-level ONLINE.
@@ -106,32 +72,14 @@ def _guest_spindown_arg(bay, path):
     )
 
 
-def _write(path, value):
+def set_led(n, state_key):
+    dbg(f"LED {n} -> {state_key}")
     try:
-        with open(path, "w") as f:
-            f.write(str(value) + "\n")
+        publish(producer_dir(), f"disk{n}", state_key)
     except OSError as e:
-        log(f"sysfs write failed: {path}={value!r}: {e}")
+        log(f"LED state publish failed: disk{n}={state_key}: {e}")
         return False
     return True
-
-
-def set_led(n, state_key):
-    s = STATES[state_key]
-    d = LED_PATHS[str(n)]
-    dbg(f"LED {n} -> {state_key}")
-    if not os.path.isdir(d):
-        log(f"LED sysfs missing: {d}")
-        return False
-
-    ok = True
-    if s.color is not None:
-        ok = _write(f"{d}/color", s.color) and ok
-    if s.blink_type is not None:
-        ok = _write(f"{d}/blink_type", s.blink_type) and ok
-    if s.brightness is not None:
-        ok = _write(f"{d}/brightness", s.brightness) and ok
-    return ok
 
 
 def set_all_leds(state_key):
@@ -319,7 +267,7 @@ def update_leds(bays, spindown, device_to_partuuids, vdev_state, resilvering):
             f"Bay {bay}: device={device} partuuids={partuuids} "
             f"state={zpool_state} power={power_state!r}"
         )
-        key = zpool_state if zpool_state in STATES else "OFF"
+        key = zpool_state if zpool_state in STATE_RANK else "OFF"
         if key in ("ONLINE", "ONLINE_ALERT") and resilvering:
             key = "RESILVER"
         elif key == "ONLINE" and is_spindown_state(power_state):
@@ -367,11 +315,6 @@ def control_once():
     return True
 
 
-def leds_off():
-    log("turning front-panel LEDs off")
-    return set_all_leds("OFF")
-
-
 def request_stop(signum, _frame):
     dbg(f"Received signal {signum}, stopping")
     STOP_REQUESTED.set()
@@ -381,24 +324,15 @@ def run_loop():
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     log(f"starting ZFS LED control loop, interval={POLL_INTERVAL:g}s")
-    try:
-        while not STOP_REQUESTED.is_set():
-            control_once()
-            STOP_REQUESTED.wait(POLL_INTERVAL)
-    finally:
-        if LEDS_OFF_ON_EXIT:
-            leds_off()
+    while not STOP_REQUESTED.is_set():
+        control_once()
+        STOP_REQUESTED.wait(POLL_INTERVAL)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Drive UGREEN front-panel LEDs from TrueNAS ZFS status")
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--start", action="store_true", help="run continuously instead of polling once")
-    mode.add_argument("--stop", action="store_true", help="turn front-panel LEDs off and exit")
+    parser = argparse.ArgumentParser(description="Publish UGREEN front-panel LED states from TrueNAS ZFS status")
+    parser.add_argument("--start", action="store_true", help="run continuously instead of polling once")
     args = parser.parse_args()
-
-    if args.stop:
-        sys.exit(0 if leds_off() else 1)
 
     if not require_vmid():
         sys.exit(1)
