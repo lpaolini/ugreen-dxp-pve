@@ -10,19 +10,18 @@ This repository is based on a fork of
 [miskcoo/ugreen_leds_controller](https://github.com/miskcoo/ugreen_leds_controller),
 [v0.3](https://github.com/miskcoo/ugreen_leds_controller/tree/v0.3).
 
-It has been intentionally reduced to only the `led-ugreen` DKMS kernel module
-and reorganized as a standard Debian package source tree.
-
-The original project includes the reverse-engineered LED protocol, CLI tools,
-systemd helper scripts, packaging experiments, and platform-specific build
-support. This fork keeps only the code needed to build and publish the Debian
-DKMS package `ugreen-dxp-pve-leds-dkms`.
+It keeps the `led-ugreen` DKMS kernel module, reorganized as a standard Debian
+package source tree, and adds a small Python LED daemon (`ugreen_leds/`) that
+renders states published by other services. The original project's CLI tools,
+helper scripts and packaging experiments are not included.
 
 The branch layout is designed for a GitHub Pages Debian repository:
 
 - `debian/` contains the Debian packaging metadata.
 - `ugreen-dxp-leds.c`, `ugreen-dxp-leds.h`, and `Makefile` are the module
   source installed under `/usr/src`.
+- `ugreen_leds/`, `bin/`, `data/` and `tests/` are the LED daemon, its entry
+  points, default configuration and unit tests.
 - `debian/ugreen-dxp-pve-leds-dkms.dkms` is the DKMS configuration template used by
   `dh-dkms`.
 - `.github/workflows/debian-pages.yml` builds the `.deb`, generates the APT
@@ -141,7 +140,7 @@ artifact yourself.
 Install the Debian build dependencies:
 
 ```sh
-sudo apt install build-essential debhelper dh-dkms dkms
+sudo apt install build-essential debhelper dh-dkms dkms python3
 ```
 
 Build the package from the repository root:

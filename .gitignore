@@ -15,5 +15,5 @@ public/
 *.cmd
 Module.symvers
 modules.order
-docs/
+/docs/
 __pycache__/

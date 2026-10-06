@@ -59,7 +59,7 @@ fit your system, pin `FAN_PWM_PATH`, `FAN_PWM_ENABLE_PATH`, and
 
 - Proxmox running directly on the UGREEN DXP host.
 - TrueNAS Scale 25 or newer running as a Proxmox VM.
-- `ugreen-dxp-pve-leds-dkms` 0.4.0 or later installed on the Proxmox host; its
+- `ugreen-dxp-pve-leds-dkms` from the same release installed on the Proxmox host; its
   `ugreen-dxp-pve-leds.service` renders the LED states these services publish.
 - `ugreen-dxp-pve-it87-dkms` installed on the Proxmox host, so fan PWM controls
   are exposed through hwmon sysfs.

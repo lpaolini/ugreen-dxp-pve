@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from ugreen_leds.tree import clear, producer_dir, producer_dirs, publish, scan
+from ugreen_leds.tree import clear, producer_dir, producer_dirs, publish, runtime_dir, scan
 
 
 class TreeTest(unittest.TestCase):
@@ -44,6 +44,11 @@ class TreeTest(unittest.TestCase):
         self.write("stray-file", "x")
         self.assertEqual(scan(self.root), {})
         self.assertEqual(producer_dirs(self.root), [os.path.join(self.root, "zfs")])
+
+    def test_runtime_dir(self):
+        self.assertEqual(runtime_dir({"RUNTIME_DIRECTORY": "/run/a:/run/b"}), "/run/a")
+        self.assertIsNone(runtime_dir({"RUNTIME_DIRECTORY": ""}))
+        self.assertIsNone(runtime_dir({}))
 
     def test_producer_dir(self):
         cases = {

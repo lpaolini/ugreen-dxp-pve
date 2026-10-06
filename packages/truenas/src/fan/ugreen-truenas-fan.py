@@ -15,8 +15,9 @@ import syslog
 import threading
 from dataclasses import dataclass
 
-sys.path.insert(0, "/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
-from ugreen_leds.tree import clear, producer_dir, publish  # noqa: E402
+sys.dont_write_bytecode = True  # never leave .pyc files in the packaged library
+sys.path.append("/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
+from ugreen_leds.tree import clear, publish, runtime_dir  # noqa: E402
 
 VMID = os.environ.get("VMID", "").strip()
 TAG = "ugreen-truenas-fan"
@@ -104,11 +105,14 @@ def set_power_led_fault(active):
 
     if POWER_LED_FAULT_ACTIVE is active:
         return True
+    directory = runtime_dir()
+    if directory is None:  # run by hand, outside the systemd unit: leave no state behind
+        return False
     try:
         if active:
-            publish(producer_dir(), "power", POWER_LED_FAULT_STATE)
+            publish(directory, "power", POWER_LED_FAULT_STATE)
         else:
-            clear(producer_dir(), "power")
+            clear(directory, "power")
     except OSError as e:
         log(f"power LED state update failed: {e}")
         return False

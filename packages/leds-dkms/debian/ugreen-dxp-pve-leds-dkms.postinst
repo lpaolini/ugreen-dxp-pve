@@ -12,7 +12,7 @@ if [ "$1" = "configure" ]; then
         install -m 0644 "$TEMPLATE" "$CONF"
     fi
 
-    if [ -n "$2" ] && dpkg --compare-versions "$2" lt 0.4.0~; then
+    if [ -n "$2" ] && dpkg --compare-versions "$2" lt 0.10.0~; then
         # The old bind unit was named after the package.
         deb-systemd-helper purge ugreen-dxp-pve-leds-dkms.service >/dev/null || true
 
@@ -26,9 +26,6 @@ if [ "$1" = "configure" ]; then
             echo "review $LEGACY_CONF for customisations to carry over."
         fi
     fi
-
-    # Start (or retry) after the template and any migrated bus are in place.
-    deb-systemd-invoke start ugreen-dxp-pve-leds-bind.service ugreen-dxp-pve-leds.service >/dev/null || true
 fi
 
 exit 0

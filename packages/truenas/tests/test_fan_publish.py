@@ -18,6 +18,11 @@ class FanPowerFaultTest(RuntimeDirectoryTestCase):
         self.assertTrue(fan.set_power_led_fault(False))
         self.assertEqual(os.listdir(self.dir), [])
 
+    def test_outside_systemd_nothing_is_published(self):
+        with mock.patch.dict(os.environ, {"RUNTIME_DIRECTORY": ""}):
+            self.assertFalse(fan.set_power_led_fault(True))
+        self.assertIsNone(fan.POWER_LED_FAULT_ACTIVE)
+
     def test_clear_without_fault_is_ok(self):
         self.assertTrue(fan.set_power_led_fault(False))
         self.assertEqual(os.listdir(self.dir), [])

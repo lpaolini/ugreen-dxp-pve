@@ -14,7 +14,9 @@ def format_status(data):
     for name, info in data["leds"].items():
         sources = ", ".join(f"{c['producer']}={c['state']}" for c in info["contributors"])
         line = f"{name:<8} {info['state']:<14} {sources or '(default)'}"
-        if not info["applied"]:
+        if not info["present"]:
+            line += "  [absent]"
+        elif not info["applied"]:
             line += "  [not applied]"
         lines.append(line)
         lines += [f"         error: {error}" for error in info["errors"]]

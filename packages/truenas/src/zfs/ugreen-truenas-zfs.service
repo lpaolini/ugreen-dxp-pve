@@ -1,5 +1,5 @@
 [Unit]
-Description=Drive UGREEN front-panel LEDs from TrueNAS ZFS status
+Description=Publish UGREEN front-panel disk LED states from TrueNAS ZFS status
 After=pve-guests.service
 
 [Service]

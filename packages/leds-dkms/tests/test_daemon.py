@@ -73,7 +73,8 @@ class DaemonTest(unittest.TestCase):
             ("disk1", "color", "0 0 0"),
         ])
         self.assertEqual(self.status()["leds"]["power"],
-                         {"state": "NORMAL", "applied": True, "contributors": [], "errors": []})
+                         {"state": "NORMAL", "applied": True, "present": True,
+                          "contributors": [], "errors": []})
 
     def test_only_changed_leds_are_written(self):
         self.daemon.run_once()
@@ -125,7 +126,8 @@ class DaemonTest(unittest.TestCase):
         missing = [m for m in self.logs if "disk5" in m]
         self.assertEqual(len(missing), 1)
         self.assertIn("LED path missing", missing[0])
-        self.assertFalse(self.status()["leds"]["disk5"]["applied"])
+        disk5 = self.status()["leds"]["disk5"]
+        self.assertEqual((disk5["applied"], disk5["present"], disk5["errors"]), (False, False, []))
 
         make_led_dirs(self.led_root, ["disk5"])  # e.g. the driver bound late
         self.writer.calls.clear()

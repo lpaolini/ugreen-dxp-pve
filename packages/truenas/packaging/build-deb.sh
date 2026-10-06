@@ -51,7 +51,7 @@ Section: utils
 Priority: optional
 Architecture: all
 Maintainer: lpaolini <lpaolini@users.noreply.github.com>
-Depends: python3 (>= 3.11), systemd, qemu-server, ugreen-dxp-pve-leds-dkms (>= 0.4.0~), ugreen-dxp-pve-it87-dkms
+Depends: python3 (>= 3.11), systemd, qemu-server, ugreen-dxp-pve-leds-dkms (>= ${VERSION}), ugreen-dxp-pve-it87-dkms
 Provides: ugreen-dxp-proxmox-truenas
 Conflicts: ugreen-dxp-proxmox-truenas
 Replaces: ugreen-dxp-proxmox-truenas
@@ -89,6 +89,10 @@ if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload || true
   systemctl enable --now ugreen-truenas-zfs.service || true
   systemctl enable --now ugreen-truenas-fan.service || true
+  if [ -n "${2:-}" ]; then
+    # Upgrade: replace the running processes with the new code.
+    systemctl try-restart ugreen-truenas-zfs.service ugreen-truenas-fan.service || true
+  fi
 fi
 POSTINST
 

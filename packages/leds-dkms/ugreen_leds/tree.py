@@ -44,9 +44,14 @@ def scan(run_root):
     return result
 
 
+def runtime_dir(environ=os.environ):
+    """The calling unit's systemd RuntimeDirectory (first entry), or None outside systemd."""
+    return environ.get("RUNTIME_DIRECTORY", "").split(":")[0] or None
+
+
 def producer_dir(run_root=RUN_ROOT, environ=os.environ):
     """Where the caller publishes: its systemd RuntimeDirectory, else <run_root>/manual."""
-    return environ.get("RUNTIME_DIRECTORY", "").split(":")[0] or os.path.join(run_root, "manual")
+    return runtime_dir(environ) or os.path.join(run_root, "manual")
 
 
 def publish(directory, led, state):

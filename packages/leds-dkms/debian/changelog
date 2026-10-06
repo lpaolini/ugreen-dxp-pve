@@ -1,4 +1,4 @@
-ugreen-dxp-pve-leds-dkms (0.4.0) stable; urgency=medium
+ugreen-dxp-pve-leds-dkms (0.10.0) stable; urgency=medium
 
   * Make ugreen-dxp-pve-leds.service the single writer to the front-panel
     LEDs. Other services publish named states as files under
@@ -12,6 +12,8 @@ ugreen-dxp-pve-leds-dkms (0.4.0) stable; urgency=medium
   * Add ugreen-dxp-led to publish, clear and inspect LED states.
   * Disk LEDs now default to OFF (previously steady purple) until a service
     publishes a state for them.
+  * Stopping ugreen-dxp-pve-leds-bind.service (shutdown, package removal)
+    now unbinds the controller, which turns the LEDs off.
   * Remove configure-led-ugreen, power-led-monitor-ugreen, power-led-ugreen
     and probe-led-ugreen.
 

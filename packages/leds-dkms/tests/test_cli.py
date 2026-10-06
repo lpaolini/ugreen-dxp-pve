@@ -24,17 +24,21 @@ class FormatStatusTest(unittest.TestCase):
     def test_format(self):
         data = {
             "leds": {
-                "power": {"state": "FAULT", "applied": True, "errors": [],
+                "power": {"state": "FAULT", "applied": True, "present": True, "errors": [],
                           "contributors": [{"producer": "fan", "state": "FAULT"}]},
-                "disk5": {"state": "OFF", "applied": False, "contributors": [],
-                          "errors": ["LED path missing: /sys/class/leds/x"]},
+                "disk1": {"state": "ONLINE", "applied": False, "present": True,
+                          "contributors": [{"producer": "zfs", "state": "ONLINE"}],
+                          "errors": ["/sys/class/leds/x/color='0 40 0': Input/output error"]},
+                "disk5": {"state": "OFF", "applied": False, "present": False,
+                          "contributors": [], "errors": []},
             },
             "problems": ["zfs/disk9: unknown LED"],
         }
         self.assertEqual(format_status(data).splitlines(), [
             "power    FAULT          fan=FAULT",
-            "disk5    OFF            (default)  [not applied]",
-            "         error: LED path missing: /sys/class/leds/x",
+            "disk1    ONLINE         zfs=ONLINE  [not applied]",
+            "         error: /sys/class/leds/x/color='0 40 0': Input/output error",
+            "disk5    OFF            (default)  [absent]",
             "problem: zfs/disk9: unknown LED",
         ])
 
@@ -86,7 +90,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("daemon status unavailable", err)
         with open(os.path.join(self.tmp.name, "status"), "w") as f:
-            json.dump({"leds": {"power": {"state": "NORMAL", "applied": True,
+            json.dump({"leds": {"power": {"state": "NORMAL", "applied": True, "present": True,
                                           "contributors": [], "errors": []}},
                        "problems": []}, f)
         rc, out, _ = self.run_cli("status")

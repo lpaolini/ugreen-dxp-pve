@@ -55,13 +55,13 @@ class Daemon:
             name: (state, ino) for name, (state, ino) in self.painted.items()
             if _inode(self.config.leds[name].path) == ino
         }
-        errors = {}
+        errors, absent = {}, set()
         for led_name in diff(self.applied(), resolution.states):
             led = self.config.leds[led_name]
             state = self.config.states[resolution.states[led_name]]
             ino = _inode(led.path)  # before writing: a recreation mid-write must not count
-            if ino is None:
-                errors[led_name] = [f"LED path missing: {led.path}"]
+            if ino is None:  # not bound yet, or not fitted (disk5-8 on a 4-bay model)
+                absent.add(led_name)
                 continue
             failures = sysfs.apply(led.path, state, write=self.write_attr)
             if failures:
@@ -71,9 +71,10 @@ class Daemon:
                 self.painted[led_name] = (state.name, ino)
 
         messages = list(resolution.problems)
+        messages += [f"{led}: LED path missing: {self.config.leds[led].path}" for led in absent]
         messages += [f"{led}: {error}" for led, errs in errors.items() for error in errs]
         try:
-            write_status(self.status_path, resolution, errors, self.applied())
+            write_status(self.status_path, resolution, errors, self.applied(), absent)
         except OSError as e:
             messages.append(f"cannot write status file {self.status_path}: {e}")
         self._report(messages)
@@ -90,12 +91,13 @@ class Daemon:
         self._reported = set(messages)
 
 
-def write_status(path, resolution, errors, applied):
+def write_status(path, resolution, errors, applied, absent):
     data = {
         "leds": {
             name: {
                 "state": state,
                 "applied": applied.get(name) == state,
+                "present": name not in absent,
                 "contributors": [
                     {"producer": producer, "state": contributed}
                     for producer, contributed in resolution.contributors[name]

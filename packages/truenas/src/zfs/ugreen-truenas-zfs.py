@@ -13,8 +13,9 @@ import sys
 import syslog
 import threading
 
-sys.path.insert(0, "/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
-from ugreen_leds.tree import producer_dir, publish  # noqa: E402
+sys.dont_write_bytecode = True  # never leave .pyc files in the packaged library
+sys.path.append("/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
+from ugreen_leds.tree import publish, runtime_dir  # noqa: E402
 
 VMID = os.environ.get("VMID", "").strip()
 TAG = "ugreen-truenas-zfs"
@@ -74,8 +75,11 @@ def _guest_spindown_arg(bay, path):
 
 def set_led(n, state_key):
     dbg(f"LED {n} -> {state_key}")
+    directory = runtime_dir()
+    if directory is None:  # run by hand, outside the systemd unit: leave no state behind
+        return False
     try:
-        publish(producer_dir(), f"disk{n}", state_key)
+        publish(directory, f"disk{n}", state_key)
     except OSError as e:
         log(f"LED state publish failed: disk{n}={state_key}: {e}")
         return False
