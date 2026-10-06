@@ -15,6 +15,9 @@ import syslog
 import threading
 from dataclasses import dataclass
 
+sys.path.insert(0, "/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
+from ugreen_leds.tree import clear, producer_dir, publish  # noqa: E402
+
 VMID = os.environ.get("VMID", "").strip()
 TAG = "ugreen-truenas-fan"
 DEBUG = os.environ.get("DEBUG", "1") == "1"
@@ -41,11 +44,8 @@ MANUAL_PWM_ENABLE_VALUE = os.environ.get("MANUAL_PWM_ENABLE_VALUE", "1")
 AUTO_PWM_ENABLE_VALUE = os.environ.get("AUTO_PWM_ENABLE_VALUE", "2")
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "30"))
 RESET_PWM_ON_EXIT = os.environ.get("RESET_PWM_ON_EXIT", "1") == "1"
-POWER_LED_HELPER = os.environ.get(
-    "POWER_LED_HELPER",
-    "/usr/libexec/ugreen-dxp-pve-leds-dkms/power-led-ugreen",
-).strip()
-POWER_LED_FAULT_NAME = os.environ.get("POWER_LED_FAULT_NAME", "fan_control").strip()
+# State published for the power LED while the fan cannot be controlled.
+POWER_LED_FAULT_STATE = "FAULT"
 
 # Limit temperature extraction to disk-like sensors so CPU/package temps do not
 # spin the storage fan. Override if your TrueNAS sensor chip names differ.
@@ -104,30 +104,14 @@ def set_power_led_fault(active):
 
     if POWER_LED_FAULT_ACTIVE is active:
         return True
-    if not POWER_LED_HELPER:
-        return False
-    if not POWER_LED_FAULT_NAME:
-        log("POWER_LED_FAULT_NAME is empty; cannot update power LED fault")
-        return False
-
-    action = "set-fault" if active else "clear-fault"
     try:
-        proc = subprocess.run(
-            [POWER_LED_HELPER, action, POWER_LED_FAULT_NAME],
-            capture_output=True, text=True, check=False,
-        )
-    except OSError as e:
-        log(f"power LED helper failed: {e}")
-        return False
-
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        if detail:
-            log(f"power LED helper {action} failed: {detail}")
+        if active:
+            publish(producer_dir(), "power", POWER_LED_FAULT_STATE)
         else:
-            log(f"power LED helper {action} failed with rc={proc.returncode}")
+            clear(producer_dir(), "power")
+    except OSError as e:
+        log(f"power LED state update failed: {e}")
         return False
-
     POWER_LED_FAULT_ACTIVE = active
     return True
 
