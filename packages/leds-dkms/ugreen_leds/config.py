@@ -127,7 +127,7 @@ def _build_led(name, table, states):
     if not isinstance(path, str) or not path.startswith("/"):
         raise ConfigError(f"leds.{name}.path must be an absolute path")
     default = table.get("default")
-    if default not in states:
+    if not isinstance(default, str) or default not in states:
         raise ConfigError(f"leds.{name}.default must name a configured state, got {default!r}")
     _reject_unknown(f"leds.{name}", table, {"path", "default"})
     return Led(path=path, default=default)

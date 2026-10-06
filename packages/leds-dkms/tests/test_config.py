@@ -62,6 +62,8 @@ class BuildTest(unittest.TestCase):
                                 "states": MINIMAL["states"]},
             "unknown led key": {"leds": {"power": {"path": "/x", "default": "NORMAL", "x": 1}},
                                 "states": MINIMAL["states"]},
+            "unhashable default": {"leds": {"power": {"path": "/x", "default": ["NORMAL"]}},
+                                   "states": MINIMAL["states"]},
             "missing priority": {"leds": MINIMAL["leds"], "states": {"NORMAL": {}}},
             "bool priority": {"leds": MINIMAL["leds"], "states": {"NORMAL": {"priority": True}}},
             "bad state name": {"leds": MINIMAL["leds"],

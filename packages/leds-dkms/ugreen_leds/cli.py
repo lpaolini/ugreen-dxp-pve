@@ -63,8 +63,12 @@ def main(argv=None):
         return 2
 
     directory = producer_dir(args.run_root)
-    if args.command == "set":
-        publish(directory, args.led, args.state)
-    else:
-        clear(directory, args.led)
+    try:
+        if args.command == "set":
+            publish(directory, args.led, args.state)
+        else:
+            clear(directory, args.led)
+    except OSError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
     return 0

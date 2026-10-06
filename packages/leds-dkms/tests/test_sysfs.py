@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from tests.helpers import make_config, make_led_dirs
-from ugreen_leds.sysfs import LedMissing, apply, write_attr
+from ugreen_leds.sysfs import apply, write_attr
 
 
 class ApplyTest(unittest.TestCase):
@@ -33,9 +33,10 @@ class ApplyTest(unittest.TestCase):
         self.assertEqual(calls, [("trigger", "none"), ("color", "255 0 0"),
                                  ("blink_type", "blink 500 500")])
 
-    def test_missing_led_directory(self):
-        with self.assertRaises(LedMissing):
-            apply(os.path.join(self.root, "disk1"), self.config.states["OFF"])
+    def test_missing_led_directory_reports_every_attribute(self):
+        errors = apply(os.path.join(self.root, "disk1"), self.config.states["FAULT"])
+        self.assertEqual(len(errors), 3)
+        self.assertIn("No such file or directory", errors[0])
 
     def test_failed_writes_are_reported_and_the_rest_continue(self):
         calls = []

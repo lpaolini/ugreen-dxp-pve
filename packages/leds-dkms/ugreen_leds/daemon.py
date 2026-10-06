@@ -47,6 +47,7 @@ class Daemon:
 
     def run_once(self):
         """Scan, resolve, write changed LEDs, refresh watches and the status file."""
+        os.makedirs(self.run_root, exist_ok=True)  # recreate it if removed at runtime
         self.watcher.sync(producer_dirs(self.run_root))
         resolution = resolve(scan(self.run_root), self.config)
         # Forget LEDs whose device vanished or was recreated (driver reload, rebind).
@@ -58,16 +59,16 @@ class Daemon:
         for led_name in diff(self.applied(), resolution.states):
             led = self.config.leds[led_name]
             state = self.config.states[resolution.states[led_name]]
-            try:
-                failures = sysfs.apply(led.path, state, write=self.write_attr)
-            except sysfs.LedMissing:
+            ino = _inode(led.path)  # before writing: a recreation mid-write must not count
+            if ino is None:
                 errors[led_name] = [f"LED path missing: {led.path}"]
                 continue
+            failures = sysfs.apply(led.path, state, write=self.write_attr)
             if failures:
                 errors[led_name] = failures
                 self.painted.pop(led_name, None)  # retry on the next pass
             else:
-                self.painted[led_name] = (state.name, _inode(led.path))
+                self.painted[led_name] = (state.name, ino)
 
         messages = list(resolution.problems)
         messages += [f"{led}: {error}" for led, errs in errors.items() for error in errs]
@@ -132,7 +133,7 @@ class Signals:
         self.reload = True
 
 
-def run(daemon, watcher, signals, load, interval=RESYNC_INTERVAL):
+def run(daemon, signals, load, interval=RESYNC_INTERVAL):
     """Main loop: one pass per wakeup, or every `interval` seconds, until stopped.
 
     The periodic pass paints LEDs that appeared late and repaints recreated ones.
@@ -148,7 +149,7 @@ def run(daemon, watcher, signals, load, interval=RESYNC_INTERVAL):
                 daemon.log("configuration reloaded")
         daemon.run_once()
         if not signals.stop:
-            watcher.wait(timeout=interval)
+            daemon.watcher.wait(timeout=interval)
 
 
 def main(argv=None):
@@ -157,6 +158,13 @@ def main(argv=None):
     parser.add_argument("--run-root", default=RUN_ROOT)
     parser.add_argument("--status-file", default=STATUS_PATH)
     args = parser.parse_args(argv)
+
+    # Install the handlers first: until then SIGHUP (a reload) would kill the process.
+    wake_r, wake_w = os.pipe()
+    os.set_blocking(wake_r, False)
+    os.set_blocking(wake_w, False)
+    signals = Signals()
+    signals.install(wake_w)
 
     def load():
         return load_config(args.config)
@@ -167,18 +175,11 @@ def main(argv=None):
         log(f"invalid configuration: {e}")
         return 1
 
-    os.makedirs(args.run_root, exist_ok=True)
-    wake_r, wake_w = os.pipe()
-    os.set_blocking(wake_r, False)
-    os.set_blocking(wake_w, False)
-    signals = Signals()
-    signals.install(wake_w)
-
     watcher = InotifyWatcher(args.run_root, wakeup_fd=wake_r)
     daemon = Daemon(config, args.run_root, args.status_file, watcher)
     log(f"driving {len(config.leds)} LEDs from {args.run_root}")
     try:
-        run(daemon, watcher, signals, load)
+        run(daemon, signals, load)
     finally:
         watcher.close()
     return 0

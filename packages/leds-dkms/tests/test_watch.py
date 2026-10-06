@@ -42,17 +42,16 @@ class InotifyWatcherTest(unittest.TestCase):
             f.write("ONLINE\n")
         self.assertTrue(self.watcher.wait(timeout=1))
 
-    def test_deleted_directory_watch_is_dropped_and_readded(self):
+    def test_recreated_directory_is_watched_again(self):
         zfs = self.producer("zfs")
         self.watcher.wait(timeout=1)
         self.watcher.sync([zfs])
         shutil.rmtree(zfs)
         self.assertTrue(self.watcher.wait(timeout=1))
-        self.assertEqual(self.watcher.watched(), {self.root})
-        os.makedirs(zfs)
+        os.makedirs(zfs)  # e.g. the producer restarted
         self.watcher.wait(timeout=1)
-        self.watcher.sync([zfs])
-        self.assertEqual(self.watcher.watched(), {self.root, zfs})
+        self.watcher.sync([zfs])  # same path, new inode: must get a fresh watch
+        self.assertFalse(self.watcher.wait(timeout=0.05))
         with open(os.path.join(zfs, "disk1"), "w") as f:
             f.write("ONLINE\n")
         self.assertTrue(self.watcher.wait(timeout=1))

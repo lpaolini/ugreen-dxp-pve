@@ -75,6 +75,12 @@ class MainTest(unittest.TestCase):
         self.assertIn("unknown state 'BOGUS'", err)
         self.assertFalse(os.path.exists(self.manual_file()))
 
+    def test_write_failure_is_an_error_not_a_traceback(self):
+        open(self.run_root, "w").close()  # a file where the run directory should be
+        rc, _, err = self.run_cli("set", "power", "FAULT")
+        self.assertEqual(rc, 1)
+        self.assertIn("ERROR:", err)
+
     def test_status(self):
         rc, _, err = self.run_cli("status")
         self.assertEqual(rc, 1)

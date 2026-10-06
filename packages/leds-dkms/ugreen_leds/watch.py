@@ -4,7 +4,6 @@ import ctypes
 import ctypes.util
 import os
 import select
-import struct
 
 IN_CLOSE_WRITE = 0x00000008
 IN_MOVED_FROM = 0x00000040
@@ -12,7 +11,6 @@ IN_MOVED_TO = 0x00000080
 IN_CREATE = 0x00000100
 IN_DELETE = 0x00000200
 IN_DELETE_SELF = 0x00000400
-IN_IGNORED = 0x00008000
 IN_ONLYDIR = 0x01000000
 IN_NONBLOCK = 0o0004000
 IN_CLOEXEC = 0o2000000
@@ -20,8 +18,6 @@ IN_CLOEXEC = 0o2000000
 ROOT_MASK = IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ONLYDIR
 PRODUCER_MASK = (IN_CLOSE_WRITE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE
                  | IN_DELETE_SELF | IN_ONLYDIR)
-
-_EVENT = struct.Struct("iIII")
 
 
 def _read_all(fd):
@@ -67,39 +63,32 @@ class InotifyWatcher:
         return set(self._watches)
 
     def sync(self, producer_dirs):
-        """Watch the root plus exactly `producer_dirs`."""
+        """Watch the root plus exactly `producer_dirs`.
+
+        Every path is re-added on each call: inotify returns the existing
+        descriptor for a directory it already watches and a new one for a
+        recreated directory, so no watch can go stale, even after lost events.
+        """
         wanted = set(producer_dirs)
         for path in list(self._watches):
             if path != self.root and path not in wanted:
                 # Fails harmlessly if the kernel already dropped it (directory deleted).
                 self._libc.inotify_rm_watch(self.fd, self._watches.pop(path))
-        if self.root not in self._watches:
-            self._watches[self.root] = self._add(self.root, ROOT_MASK)
-        for path in wanted - set(self._watches):
+        self._watches[self.root] = self._add(self.root, ROOT_MASK)
+        for path in wanted:
             try:
                 self._watches[path] = self._add(path, PRODUCER_MASK)
             except FileNotFoundError:
-                pass  # removed since the scan; the root watch reports it
+                self._watches.pop(path, None)  # removed since the scan; the root watch reports it
 
     def wait(self, timeout=None):
         """Block until something happens. Returns False only on timeout."""
         fds = [self.fd] if self.wakeup_fd is None else [self.fd, self.wakeup_fd]
         readable, _, _ = select.select(fds, [], [], timeout)
-        if self.wakeup_fd in readable:
-            for _ in _read_all(self.wakeup_fd):
+        for fd in readable:  # the next pass rescans everything, so contents don't matter
+            for _ in _read_all(fd):
                 pass
-        if self.fd in readable:
-            self._read_events()
         return bool(readable)
-
-    def _read_events(self):
-        for data in _read_all(self.fd):
-            offset = 0
-            while offset + _EVENT.size <= len(data):
-                wd, mask, _cookie, name_len = _EVENT.unpack_from(data, offset)
-                offset += _EVENT.size + name_len
-                if mask & IN_IGNORED:  # the kernel dropped this watch; sync() re-adds it
-                    self._watches = {p: w for p, w in self._watches.items() if w != wd}
 
     def close(self):
         os.close(self.fd)

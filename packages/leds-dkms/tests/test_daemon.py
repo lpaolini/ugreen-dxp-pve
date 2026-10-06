@@ -31,10 +31,13 @@ class RecordingWriter:
     def __init__(self):
         self.calls = []
         self.fail = set()
+        self.on_write = None  # optional hook(led, attr)
 
     def __call__(self, path, value):
         led, attr = path.split(os.sep)[-2:]
         self.calls.append((led, attr, value))
+        if self.on_write:
+            self.on_write(led, attr)
         if (led, attr) in self.fail:
             raise OSError(errno.EIO, "Input/output error")
 
@@ -112,7 +115,7 @@ class DaemonTest(unittest.TestCase):
         self.daemon.run_once()
         self.assertTrue(self.status()["leds"]["power"]["applied"])
         self.daemon.run_once()
-        self.assertNotIn("power", [c[0] for c in self.writer.calls[3:]])
+        self.assertNotIn("power", [c[0] for c in self.writer.calls[2:]])
 
     def test_missing_led_is_logged_once_and_painted_when_it_appears(self):
         config = make_config(self.led_root, leds=("power", "disk1", "disk5"))
@@ -130,16 +133,36 @@ class DaemonTest(unittest.TestCase):
         self.assertEqual(self.writer.calls, [("disk5", "color", "0 0 0")])
         self.assertTrue(self.status()["leds"]["disk5"]["applied"])
 
+    def recreate_led(self, name):
+        """Replace an LED directory with a new inode, as a driver reload does."""
+        fresh = os.path.join(self.led_root, f"{name}.new")
+        make_led_dirs(self.led_root, [f"{name}.new"])
+        shutil.rmtree(os.path.join(self.led_root, name))
+        os.rename(fresh, os.path.join(self.led_root, name))
+
     def test_recreated_led_is_repainted(self):
         self.daemon.run_once()
-        # Recreate the power LED directory with a new inode (driver reload).
-        fresh = os.path.join(self.led_root, "power.new")
-        make_led_dirs(self.led_root, ["power.new"])
-        shutil.rmtree(os.path.join(self.led_root, "power"))
-        os.rename(fresh, os.path.join(self.led_root, "power"))
+        self.recreate_led("power")
         self.writer.calls.clear()
         self.daemon.run_once()
         self.assertEqual([c[0] for c in self.writer.calls], ["power", "power"])
+
+    def test_led_recreated_while_writing_is_repainted(self):
+        def recreate_once(led, attr):
+            if (led, attr) == ("power", "trigger"):
+                self.writer.on_write = None
+                self.recreate_led("power")
+
+        self.writer.on_write = recreate_once
+        self.daemon.run_once()
+        self.writer.calls.clear()
+        self.daemon.run_once()
+        self.assertEqual([c[0] for c in self.writer.calls], ["power", "power"])
+
+    def test_run_root_removed_at_runtime_is_recreated(self):
+        shutil.rmtree(self.run_root)
+        self.daemon.run_once()
+        self.assertTrue(os.path.isdir(self.run_root))
 
     def test_problems_are_logged_once(self):
         self.publish("zfs", "disk1", "BOGUS")
@@ -185,10 +208,11 @@ class RunLoopTest(unittest.TestCase):
                 raise value
             return value
 
-        watcher = FakeWatcher([request_reload, request_reload, request_stop])
-        run(FakeDaemon(), watcher, signals, load, interval=7)
+        daemon = FakeDaemon()
+        daemon.watcher = FakeWatcher([request_reload, request_reload, request_stop])
+        run(daemon, signals, load, interval=7)
         self.assertEqual(len(passes), 3)
-        self.assertEqual(watcher.timeouts, [7, 7, 7])
+        self.assertEqual(daemon.watcher.timeouts, [7, 7, 7])
         self.assertEqual(configs, ["new-config"])
         self.assertEqual(logs, ["reload failed, keeping the previous configuration: bad",
                                 "configuration reloaded"])
