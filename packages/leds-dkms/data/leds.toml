@@ -68,6 +68,17 @@ brightness = 255
 color = "255 0 0"
 blink_type = "blink 500 500"
 
+# Applied to every LED when the controller is released (shutdown, reboot,
+# package removal), just before the LEDs are switched off. The controller keeps
+# these values while the NAS is off and shows them in its startup sequence.
+
+[states.SHUTDOWN]
+priority = 0
+trigger = "none"
+blink_type = "none"
+color = "255 255 255"
+brightness = 255
+
 # Network LED
 
 [states.NETDEV]

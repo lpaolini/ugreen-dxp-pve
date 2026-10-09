@@ -25,6 +25,11 @@ class PackagedConfigTest(unittest.TestCase):
                  "RESILVER", "DEGRADED", "MISSING", "REMOVED", "UNAVAIL", "ERROR", "FAULTED"]
         self.assertEqual(sorted(order, key=p.__getitem__), order)
 
+    def test_shutdown_state_is_steady_white(self):
+        config = load_config([os.path.join(DATA, "leds.toml")])
+        self.assertEqual(dict(config.states["SHUTDOWN"].attrs), {
+            "trigger": "none", "blink_type": "none", "color": "255 255 255", "brightness": "255"})
+
     def test_disk_states_clear_the_trigger_then_keep_the_zfs_write_order(self):
         config = load_config([os.path.join(DATA, "leds.toml")])
         self.assertEqual(config.states["DEGRADED"].attrs,

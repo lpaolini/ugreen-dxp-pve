@@ -105,8 +105,10 @@ device_name = "vmbr1"   # network LED follows another interface
 color = "#004010"       # "R G B" or "#rrggbb"
 ```
 
-By default the power LED is steady green (`NORMAL`) and blinks red while any
-service publishes `FAULT`; the network LED uses the kernel `netdev` trigger for
+At shutdown and reboot every LED is set to the `SHUTDOWN` state (steady white)
+and switched off, so the panel is dark while the NAS is off and the
+controller's own startup sequence shows white. By default the power LED is
+steady green (`NORMAL`) and blinks red while any service publishes `FAULT`; the network LED uses the kernel `netdev` trigger for
 `vmbr0` in blue; disk LEDs stay `OFF` until a service publishes a state for
 them.
 

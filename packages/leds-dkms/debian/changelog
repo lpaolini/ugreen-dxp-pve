@@ -12,8 +12,12 @@ ugreen-dxp-pve-leds-dkms (0.10.0) stable; urgency=medium
   * Add ugreen-dxp-led to publish, clear and inspect LED states.
   * Disk LEDs now default to OFF (previously steady purple) until a service
     publishes a state for them.
-  * Stopping ugreen-dxp-pve-leds-bind.service (shutdown, package removal)
-    now unbinds the controller, which turns the LEDs off.
+  * Stopping ugreen-dxp-pve-leds-bind.service (shutdown, reboot, package
+    removal) resets every LED to steady white (state SHUTDOWN), switches it
+    off and releases the controller: the panel is dark while the NAS is off
+    and the controller's own startup sequence is white again.
+  * Binding retries for up to two minutes when the controller does not
+    answer, and re-probes a controller left registered without a driver.
   * Remove configure-led-ugreen, power-led-monitor-ugreen, power-led-ugreen
     and probe-led-ugreen.
 
