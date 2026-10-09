@@ -22,9 +22,15 @@ def _read(path):
         return f.read().strip()
 
 
+def _devices(sys_root):
+    # Adapters (i2c-N) and clients (N-00aa) live here on every kernel; the legacy
+    # /sys/class/i2c-adapter only exists with CONFIG_I2C_COMPAT.
+    return os.path.join(sys_root, "bus", "i2c", "devices")
+
+
 def list_adapters(sys_root="/sys"):
-    """Return {bus_number: adapter_name} from <sys_root>/class/i2c-adapter."""
-    base = os.path.join(sys_root, "class", "i2c-adapter")
+    """Return {bus_number: adapter_name} for every I2C adapter."""
+    base = _devices(sys_root)
     try:
         entries = os.listdir(base)
     except FileNotFoundError:
@@ -49,7 +55,7 @@ def find_bus(adapters, override=None):
 
 def _registered(sys_root, bus):
     """Return (adapter_dir, name registered at I2C_ADDR or None)."""
-    adapter = os.path.join(sys_root, "bus", "i2c", "devices", f"i2c-{bus}")
+    adapter = os.path.join(_devices(sys_root), f"i2c-{bus}")
     if not os.path.isdir(adapter):
         raise BindError(f"I2C adapter i2c-{bus} does not exist")
     device = os.path.join(adapter, I2C_DEVICE.format(bus=bus))

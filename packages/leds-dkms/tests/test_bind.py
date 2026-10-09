@@ -21,17 +21,19 @@ class FindBusTest(unittest.TestCase):
 
 
 class FakeSys:
-    """A fake /sys with I2C adapters, as the kernel lays them out."""
+    """A fake /sys with I2C adapters, laid out as on a current kernel.
+
+    Adapters and clients both appear under /sys/bus/i2c/devices; the legacy
+    /sys/class/i2c-adapter directory does not exist (no CONFIG_I2C_COMPAT).
+    """
 
     def __init__(self, root):
         self.root = root
 
     def add_adapter(self, bus, name):
-        class_dir = os.path.join(self.root, "class", "i2c-adapter", f"i2c-{bus}")
-        os.makedirs(class_dir)
-        with open(os.path.join(class_dir, "name"), "w") as f:
-            f.write(name + "\n")
         os.makedirs(self.adapter(bus))
+        with open(os.path.join(self.adapter(bus), "name"), "w") as f:
+            f.write(name + "\n")
         for control in ("new_device", "delete_device"):
             open(os.path.join(self.adapter(bus), control), "w").close()
 
@@ -43,6 +45,8 @@ class FakeSys:
         os.makedirs(device)
         with open(os.path.join(device, "name"), "w") as f:
             f.write(name + "\n")
+        # Clients are listed next to the adapters too.
+        os.symlink(device, os.path.join(self.root, "bus", "i2c", "devices", f"{bus}-003a"))
 
     def read(self, bus, control):
         with open(os.path.join(self.adapter(bus), control)) as f:
@@ -54,12 +58,16 @@ class BindTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.sys = FakeSys(self.tmp.name)
-        self.sys.add_adapter(0, "i915 gmbus dpc")
-        self.sys.add_adapter(1, "SMBus I801 adapter at efa0")
+        # Adapter names as reported by a DXP4800 Plus on Proxmox VE 9.
+        self.sys.add_adapter(0, "Synopsys DesignWare I2C adapter")
+        self.sys.add_adapter(1, "SMBus I801 adapter at 0000:00:1f.4")
 
-    def test_list_adapters(self):
-        self.assertEqual(list_adapters(self.tmp.name),
-                         {0: "i915 gmbus dpc", 1: "SMBus I801 adapter at efa0"})
+    def test_list_adapters_skips_clients(self):
+        self.sys.add_device(1, "led-ugreen")
+        self.assertEqual(list_adapters(self.tmp.name), {
+            0: "Synopsys DesignWare I2C adapter",
+            1: "SMBus I801 adapter at 0000:00:1f.4",
+        })
         self.assertEqual(list_adapters(os.path.join(self.tmp.name, "missing")), {})
 
     def test_bind_writes_new_device(self):
