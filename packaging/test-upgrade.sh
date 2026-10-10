@@ -58,15 +58,25 @@ apt-get update -qq
 apt-get install -y -qq ugreen-dxp-pve-truenas >/dev/null
 echo "installed: $(dpkg-query -W -f='${Package} ${Version}  ' 'ugreen-dxp-pve-*')"
 
-# Edit the configuration like an admin would.
-for conf in /etc/ugreen-dxp-pve-truenas-fan.conf /etc/ugreen-dxp-pve-truenas-zfs.conf; do
-  sed -i 's/^# *VMID=.*/VMID=105/' "${conf}"
-done
-sed -i 's/^MIN_PWM=.*/MIN_PWM=80/' /etc/ugreen-dxp-pve-truenas-fan.conf
+# Edit the configuration like an admin would, in the format the installed release uses.
+if [[ -e /etc/ugreen-dxp-pve-truenas.toml ]]; then
+  sed -i -e 's/^#* *vmid = .*/vmid = 105/' -e 's/^min_pwm = .*/min_pwm = 80/' \
+    /etc/ugreen-dxp-pve-truenas.toml
+  old_truenas_confs=false
+else
+  for conf in /etc/ugreen-dxp-pve-truenas-fan.conf /etc/ugreen-dxp-pve-truenas-zfs.conf; do
+    sed -i 's/^# *VMID=.*/VMID=105/' "${conf}"
+  done
+  sed -i 's/^MIN_PWM=.*/MIN_PWM=80/' /etc/ugreen-dxp-pve-truenas-fan.conf
+  old_truenas_confs=true
+fi
 if [[ -e /etc/ugreen-dxp-pve-leds.conf ]]; then  # 0.9.10 shell config
   sed -i -e 's/^# *I2C_BUS=.*/I2C_BUS=1/' -e 's/^NETDEV_LED_DEVICE=.*/NETDEV_LED_DEVICE=vmbr1/' \
     /etc/ugreen-dxp-pve-leds.conf
-else  # dev channel: named-state overrides
+elif grep -q '^\[power\.' /etc/ugreen-dxp-pve-leds.toml 2>/dev/null; then  # current format
+  sed -i -e 's/^# *i2c_bus = .*/i2c_bus = 1/' -e 's/^device_name = .*/device_name = "vmbr1"/' \
+    /etc/ugreen-dxp-pve-leds.toml
+else  # dev channel before 0.10.0: named-state overrides
   printf '[bind]\ni2c_bus = 1\n\n[states.NETDEV]\ndevice_name = "vmbr1"\n' \
     > /etc/ugreen-dxp-pve-leds.toml
 fi
@@ -87,11 +97,14 @@ assert dict(leds.netdev)["device_name"] == "vmbr1", leds.netdev
 truenas = load()
 assert truenas.vmid == "105", truenas
 assert truenas.fan.min_pwm == 80, truenas.fan
+assert {"TEMP_WARNING", "TEMP_ALERT"} <= set(truenas.power), truenas.power
 EOF
-  for conf in /etc/ugreen-dxp-pve-truenas-fan.conf /etc/ugreen-dxp-pve-truenas-zfs.conf; do
-    test ! -e "${conf}"
-    test -e "${conf}.migrated"
-  done
+  if [[ "${old_truenas_confs}" == true ]]; then
+    for conf in /etc/ugreen-dxp-pve-truenas-fan.conf /etc/ugreen-dxp-pve-truenas-zfs.conf; do
+      test ! -e "${conf}"
+      test -e "${conf}.migrated"
+    done
+  fi
   test -d /run/ugreen-dxp-leds
 }
 

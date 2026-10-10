@@ -59,6 +59,7 @@ state to host hardware:
   TrueNAS, combines them with the host CPU temperature, and writes the selected
   PWM value to the UGREEN fan sysfs path. If the fan PWM write fails, it
   publishes a blinking red look for the power LED until a later write succeeds.
+  The power LED turns orange when the hottest disk reaches 40 °C and red at 43 °C.
 - `ugreen-truenas-zfs.service` reads `lsblk`, `zpool status -pj`, and optional
   disk standby data, maps VM disks back to physical UGREEN bays, and publishes
   a look for LEDs `disk1` through `disk4`, as defined in `/etc/ugreen-dxp-pve-truenas.toml`.

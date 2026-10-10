@@ -25,7 +25,8 @@ There are two services:
   the UGREEN fan PWM sysfs path on the Proxmox host. If temperature collection
   fails, it uses the configured failsafe PWM. If the fan PWM path cannot be
   controlled, it publishes a blinking red look for the power LED until a later
-  PWM write succeeds.
+  PWM write succeeds. It also shows the hottest disk on the power LED: orange
+  from `temp_warning` (40 °C), red from `temp_alert` (43 °C).
 - `ugreen-truenas-zfs.service` polls `lsblk` and `zpool status -pj` inside the
   TrueNAS VM, maps the VM's disks back to the four physical UGREEN bays, and
   publishes a look for LEDs `disk1` through `disk4` to show ZFS
@@ -42,11 +43,12 @@ Both services poll every 30 seconds. Their configuration lives in one file,
   whose `name` matches `hwmon_regex` (an ITE chip exposed by the it87 driver,
   such as `it8613`) and uses `pwm_channel` to build the PWM, PWM enable and fan
   RPM paths. If that does not fit your system, pin `pwm_path`,
-  `pwm_enable_path` and `input_path`.
+  `pwm_enable_path` and `input_path`; `temp_warning` and `temp_alert` for the
+  power LED.
 - `[zfs]`: poll interval, `alert_threshold` and `bays`, the disk path inside
   TrueNAS of each front-panel bay.
-- `[power.FAULT]` and `[disk.*]`: how each state looks on the LEDs (see the
-  table below).
+- `[power.*]` and `[disk.*]`: how each state looks on the LEDs (see the
+  tables below).
 
 Upgrading from the two `.conf` files of earlier releases creates this file
 from them; edited old files are kept as `*.conf.migrated` (dpkg deletes
@@ -171,6 +173,16 @@ looks are defined in `[disk.*]` of `/etc/ugreen-dxp-pve-truenas.toml`:
 
 The fan service publishes `[power.FAULT]` (blinking red) to the power LED while
 it cannot control the fan.
+
+The fan service also publishes the hottest disk temperature to the power
+LED. A fan-control fault wins over it.
+
+| Hottest disk | Look | Priority | Color | Effect |
+| --- | --- | --- | --- | --- |
+| below `temp_warning`, or no reading | default (`NORMAL`) | – | `#004010` | `none` |
+| at or above `temp_warning` (40 °C) | `TEMP_WARNING` | 30 | `#ff8000` | `none` |
+| at or above `temp_alert` (43 °C) | `TEMP_ALERT` | 20 | `#ff0000` | `none` |
+| the fan cannot be controlled | `FAULT` | 10 | `#ff0000` | `blink:500:500` |
 
 ## Build locally
 

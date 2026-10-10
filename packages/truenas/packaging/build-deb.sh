@@ -169,6 +169,8 @@ ${PACKAGE} (${VERSION}) stable; urgency=medium
   * Read all settings and the LED looks from /etc/ugreen-dxp-pve-truenas.toml,
     created from the old .conf files on upgrade.
   * Publish LED looks under /run/ugreen-dxp-leds/truenas-zfs and truenas-fan.
+  * Show the hottest disk temperature on the power LED: orange from
+    [fan] temp_warning, red from temp_alert.
 
  -- Luca Paolini <lookap@gmail.com>  Sat, 10 Oct 2026 12:00:00 +0200
 CHANGELOG
