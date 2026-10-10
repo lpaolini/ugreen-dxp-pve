@@ -123,11 +123,45 @@ color = "#ff8000"
         self.assertIn("dropped states.NORMAL.color", out)
 
     def test_current_file_is_left_alone(self):
+        legacy = os.path.join(self.tmp.name, "leds.conf.dpkg-bak")
+        self.write(legacy, "I2C_BUS=7\n")
         self.write(self.config, self.read(TEMPLATE).replace('"vmbr0"', '"vmbr2"'))
         before = self.read(self.config)
-        self.assertEqual(self.migrate("--legacy", self.config)[0], 0)
+        self.assertEqual(self.migrate("--legacy", legacy)[0], 0)
         self.assertEqual(self.read(self.config), before)
         self.assertFalse(os.path.exists(self.config + ".migrated"))
+
+    def test_dev_postinst_shape_is_converted(self):
+        self.write(self.config, DEV_TEMPLATE + "\n[bind]\ni2c_bus = 4\n")
+        rc, _, _ = self.migrate()
+        self.assertEqual(rc, 0)
+        self.assertEqual(load_config(self.config).i2c_bus, 4)
+
+    def test_bad_legacy_value_is_ignored(self):
+        legacy = os.path.join(self.tmp.name, "leds.conf.dpkg-bak")
+        self.write(legacy, "I2C_BUS=3\nNETDEV_LED_DEVICE=has space\n")
+        rc, out, _ = self.migrate("--legacy", legacy)
+        self.assertEqual(rc, 0)
+        config = load_config(self.config)
+        self.assertEqual(config.i2c_bus, 3)
+        self.assertNotEqual(dict(config.netdev)["device_name"], "has space")
+        self.assertIn("ignored NETDEV_LED_DEVICE", out)
+
+    def test_unreadable_legacy_file_is_not_reported_as_read(self):
+        legacy = os.path.join(self.tmp.name, "leds.conf.dpkg-bak")
+        with open(legacy, "wb") as f:
+            f.write(b"\xff\xfe=\n")
+        rc, out, _ = self.migrate("--legacy", legacy)
+        self.assertEqual(rc, 0)
+        self.assertIn("ignored", out)
+        self.assertNotIn("Created", out)
+
+    def test_one_bad_override_drops_only_that_key(self):
+        self.write(self.config, '[bind]\ni2c_bus = 2\n\n[states.NETDEV]\nlink = "1"\n')
+        rc, out, _ = self.migrate()
+        self.assertEqual(rc, 0)
+        self.assertEqual(load_config(self.config).i2c_bus, 2)
+        self.assertIn("dropped states.NETDEV.link", out)
 
     def test_unreadable_file_is_left_alone(self):
         self.write(self.config, "[bind\n")
@@ -136,13 +170,21 @@ color = "#ff8000"
         self.assertEqual(self.read(self.config), "[bind\n")
         self.assertIn("leaving", err)
 
-    def test_conversion_that_does_not_validate_fails(self):
-        old = '[states.NETDEV]\ndevice_name = "has space"\n'
-        self.write(self.config, old)
-        rc, _, err = self.migrate()
+    def test_bad_device_name_is_dropped(self):
+        self.write(self.config, '[states.NETDEV]\ndevice_name = "has space"\n')
+        rc, out, _ = self.migrate()
+        self.assertEqual(rc, 0)
+        self.assertIn("dropped states.NETDEV.device_name", out)
+        self.assertNotEqual(dict(load_config(self.config).netdev)["device_name"], "has space")
+
+    def test_invalid_template_fails(self):
+        bad = os.path.join(self.tmp.name, "bad.toml")
+        self.write(bad, "[bind]\ni2c_bus = \"x\"\n")
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main([self.config, bad])
         self.assertEqual(rc, 1)
-        self.assertIn("netdev.device_name", err)
-        self.assertEqual(self.read(self.config), old)
+        self.assertFalse(os.path.exists(self.config))
 
 
 if __name__ == "__main__":

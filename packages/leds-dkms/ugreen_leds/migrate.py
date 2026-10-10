@@ -42,15 +42,29 @@ def _effect(value):
     return ":".join(str(value).split())
 
 
+def _apply(text, table, key, value):
+    """Return (new_text, error): set_key, kept only if the whole result validates."""
+    try:
+        new = set_key(text, table, key, value)
+        build(tomllib.loads(new))
+    except (ConfigError, ValueError, TypeError) as e:
+        return text, e
+    return new, None
+
+
 def convert_legacy(template, env):
     """Return (text, messages): the template with the 0.9.10 settings in `env`."""
     text, messages = template, []
     for name, (table, key, convert) in LEGACY_KEYS.items():
         if env.get(name):
             try:
-                text = set_key(text, table, key, convert(env[name]))
+                value = convert(env[name])
             except ValueError as e:
                 messages.append(f"ignored {name}={env[name]!r}: {e}")
+                continue
+            text, error = _apply(text, table, key, value)
+            if error:
+                messages.append(f"ignored {name}={env[name]!r}: {error}")
     if any(name.endswith(("_COLOR", "_BLINK_TYPE")) for name in env):
         messages.append("LED colours and blink settings of the old configuration are not "
                         "migrated; set looks in the new file")
@@ -62,7 +76,9 @@ def convert_overrides(template, old):
     text, messages = template, []
     i2c_bus = old.get("bind", {}).get("i2c_bus")
     if i2c_bus is not None:
-        text = set_key(text, "bind", "i2c_bus", i2c_bus)
+        text, error = _apply(text, "bind", "i2c_bus", i2c_bus)
+        if error:
+            messages.append(f"dropped bind.i2c_bus: {error}")
     for name in old.get("leds", {}):
         messages.append(f"dropped [leds.{name}]: LED paths are fixed now")
 
@@ -92,7 +108,9 @@ def convert_overrides(template, old):
             except ValueError as e:
                 messages.append(f"dropped states.{name}.{key}: {e}")
                 continue
-            text = set_key(text, target, new_key, value)
+            text, error = _apply(text, target, new_key, value)
+            if error:
+                messages.append(f"dropped states.{name}.{key}: {error}")
     return text, messages
 
 
@@ -126,9 +144,9 @@ def main(argv=None):
     elif args.legacy and os.path.exists(args.legacy):
         try:
             text, messages = convert_legacy(template, read_env(args.legacy))
+            messages.append(f"Created {args.config} with the settings of {args.legacy}")
         except (OSError, UnicodeDecodeError) as e:
             text, messages = template, [f"ignored {args.legacy}: {e}"]
-        messages.append(f"Created {args.config} with the settings of {args.legacy}")
     else:
         text, messages = template, []
 

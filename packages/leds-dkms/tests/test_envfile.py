@@ -16,6 +16,14 @@ class ReadEnvTest(unittest.TestCase):
                 "VMID": "105", "DEBUG": "1", "COLOR": "0 64 16",
                 "BLINK": "blink 500 500", "REGEX": "a=b", "EMPTY": ""})
 
+    def test_unquoted_inline_comment_is_stripped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "x.conf")
+            with open(path, "w") as f:
+                f.write('A=vmbr1 # uplink\nB=a#b\nC="x # y"\nD="x" # z\nE=1\t#t\n')
+            self.assertEqual(read_env(path), {
+                "A": "vmbr1", "B": "a#b", "C": "x # y", "D": "x", "E": "1"})
+
 
 if __name__ == "__main__":
     unittest.main()
