@@ -65,52 +65,81 @@ installs two systemd services:
 - `ugreen-dxp-pve-leds-bind.service` binds the `led-ugreen` driver to the LED
   controller at I2C address `0x3a`, and unbinds it when stopped.
 - `ugreen-dxp-pve-leds.service` is the only process that writes to
-  `/sys/class/leds/ugreen:*`. For each LED it shows the highest-priority state
-  that other services have published, or the LED's default when none has.
+  `/sys/class/leds/ugreen:*`. It drives the network LED itself and, for the
+  power and disk LEDs, shows the lowest-priority look that other services have
+  published.
 
-### Publishing LED states
+### Publishing LED looks
 
-A service publishes a state by writing its name into a file:
+A service shows something on the power LED or a disk LED by writing a
+*contribution*: one line in a file named after the LED.
 
 ```text
-/run/ugreen-dxp-pve/<producer>/<led>
+/run/ugreen-dxp-leds/<producer>/<led>
 ```
 
-`<led>` is `power`, `netdev`, or `disk1` through `disk8`; the file holds one
-state name such as `FAULT` or `DEGRADED`. Give the publishing unit
-`RuntimeDirectory=ugreen-dxp-pve/<producer>`: systemd creates the directory
-(exported as `$RUNTIME_DIRECTORY`) and deletes it when the unit stops, so the
-unit's states disappear with it. Write atomically (write `.<led>.tmp`, then
-rename it over `<led>`); delete the file to withdraw the state.
+`<led>` is `power` or `disk1` through `disk8`; the network LED is driven by
+the daemon. The line holds space-separated `key=value` fields:
 
-From a shell, use `ugreen-dxp-led`, which checks LED and state names:
+```text
+priority=35 color=#502800 effect=blink:500:500 state=DEGRADED
+```
+
+| Key | Required | Value |
+| --- | --- | --- |
+| `priority` | yes | 0–999. Across all producers the lowest wins; ties go to the producer name that sorts first. |
+| `color` | yes | `#rrggbb`. `#000000` switches the LED off. |
+| `effect` | no | `none` (default), `blink:ON:OFF` or `breath:ON:OFF`, in milliseconds. |
+| `state` | no | A label shown by `ugreen-dxp-led status`. |
+
+A file that does not parse is ignored and listed by `ugreen-dxp-led status`.
+With no valid contribution the power LED shows `[power.NORMAL]` from the
+configuration and a disk LED is off.
+
+Give the publishing unit `RuntimeDirectory=ugreen-dxp-leds/<producer>`: systemd
+creates the directory (exported as `$RUNTIME_DIRECTORY`) and deletes it when
+the unit stops, so the unit's contributions disappear with it. Write
+atomically (write `.<led>.tmp`, then rename it over `<led>`); delete the file
+to withdraw it. Python producers can use `publish()` and `clear()` from
+`ugreen_leds.tree` in `/usr/lib/ugreen-dxp-pve-leds`.
+
+From a shell, use `ugreen-dxp-led`:
 
 ```sh
-ugreen-dxp-led set power FAULT   # into $RUNTIME_DIRECTORY, else /run/ugreen-dxp-pve/manual
-ugreen-dxp-led clear power
-ugreen-dxp-led status            # what each LED shows, and which producers asked for it
+ugreen-dxp-led set power FAULT          # a [power.*] look from the configuration
+ugreen-dxp-led set disk2 priority=5 color=#ff00ff effect=blink:100:100
+ugreen-dxp-led clear disk2
+ugreen-dxp-led status                   # what each LED shows, and who asked for it
 ```
+
+`set` and `clear` write into `$RUNTIME_DIRECTORY` when run from a systemd unit,
+else into `/run/ugreen-dxp-leds/manual`. The daemon writes what it shows to
+`/run/ugreen-dxp-leds/.status`, which `ugreen-dxp-led status` reads.
 
 ### Configuring the LEDs
 
-LEDs and states are defined in `/usr/share/ugreen-dxp-pve-leds/leds.toml`.
-Override any key in `/etc/ugreen-dxp-pve-leds.toml`, then run
-`systemctl reload ugreen-dxp-pve-leds.service`:
+`/etc/ugreen-dxp-pve-leds.toml` holds the whole configuration; the reference
+copy is `/usr/share/ugreen-dxp-pve-leds/ugreen-dxp-pve-leds.toml`. Apply changes
+with `systemctl reload ugreen-dxp-pve-leds.service`:
 
 ```toml
-[states.NETDEV]
-device_name = "vmbr1"   # network LED follows another interface
+[netdev]
+device_name = "vmbr1"   # the network LED follows another interface
+color = "#0040ff"
 
-[states.NORMAL]
-color = "#004010"       # "R G B" or "#rrggbb"
+[power.NORMAL]
+priority = 100
+color = "#004010"       # the power LED while nothing is contributed
 ```
 
-At shutdown and reboot every LED is set to the `SHUTDOWN` state (steady white)
-and switched off, so the panel is dark while the NAS is off and the
-controller's own startup sequence shows white. By default the power LED is
-steady green (`NORMAL`) and blinks red while any service publishes `FAULT`; the network LED uses the kernel `netdev` trigger for
-`vmbr0` in blue; disk LEDs stay `OFF` until a service publishes a state for
-them.
+`[power.*]` names looks for the power LED; `NORMAL` is required, and
+`ugreen-dxp-led set power NAME` publishes any of them. Disk LED looks belong to
+the services that publish them, for example `/etc/ugreen-dxp-pve-truenas.toml`.
+
+At shutdown and reboot every LED is set to the `[shutdown]` colour (white) and
+switched off, so the panel is dark while the NAS is off and the controller's
+own startup sequence shows white. By default the power LED is steady green and
+the network LED follows `vmbr0` in blue.
 
 ### Troubleshooting
 
