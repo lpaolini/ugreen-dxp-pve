@@ -15,7 +15,7 @@ def template_data():
 class TemplateTest(unittest.TestCase):
     def test_template_matches_the_defaults(self):
         config = load(TEMPLATE)
-        self.assertIsNone(config.vmid)
+        self.assertEqual(config.vmid, "100")
         self.assertFalse(config.debug)
         self.assertEqual(config.fan, Fan())
         self.assertEqual(config.zfs, Zfs())
@@ -50,10 +50,12 @@ class BuildTest(unittest.TestCase):
 
     def test_missing_settings_use_the_defaults(self):
         def change(data):
+            del data["vmid"]
             del data["fan"]["min_pwm"]
             del data["zfs"]
 
         config = self.build(change)
+        self.assertEqual(config.vmid, "100")
         self.assertEqual(config.fan.min_pwm, 90)
         self.assertEqual(config.zfs, Zfs())
 

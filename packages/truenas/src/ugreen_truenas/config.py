@@ -13,6 +13,7 @@ DISK_STATES = ("FAULTED", "ERROR", "UNAVAIL", "REMOVED", "MISSING", "DEGRADED", 
                "OFFLINE", "CHECKING", "ONLINE_ALERT", "SPINDOWN", "ONLINE", "OFF")
 POWER_STATES = ("FAULT",)  # published by the fan service
 MAX_BAYS = 8  # disk1 ... disk8
+DEFAULT_VMID = 100
 
 
 class ConfigError(Exception):
@@ -50,7 +51,7 @@ class Zfs:
 
 @dataclass(frozen=True)
 class Config:
-    vmid: str | None  # the TrueNAS VM ID as `qm` takes it; None until configured
+    vmid: str  # the TrueNAS VM ID as `qm` takes it
     debug: bool
     fan: Fan
     zfs: Zfs
@@ -154,9 +155,7 @@ def load(path=CONFIG_PATH):
 def build(data):
     """Validate parsed TOML data and return a Config."""
     _reject_unknown("top level", data, {"vmid", "debug", "fan", "zfs", "power", "disk"})
-    vmid = data.get("vmid")
-    if vmid is not None:
-        vmid = str(_checked("vmid", _int(1), vmid))
+    vmid = str(_checked("vmid", _int(1), data.get("vmid", DEFAULT_VMID)))
     fan = _settings(Fan, "fan", _table(data, "fan"), FAN_CHECKS)
     if fan.min_pwm > fan.max_pwm:
         raise ConfigError("fan.min_pwm must not exceed fan.max_pwm")

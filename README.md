@@ -130,9 +130,9 @@ are in `/etc/ugreen-dxp-pve-leds.conf.dpkg-bak`.
 ### Configuration files
 
 - `/etc/ugreen-dxp-pve-leds.toml` (LED daemon: network LED, power LED looks)
-- `/etc/ugreen-dxp-pve-truenas.toml` (`vmid` needs to be set; fan, ZFS and disk LED looks)
+- `/etc/ugreen-dxp-pve-truenas.toml` (`vmid`, 100 by default; fan, ZFS and disk LED looks)
 
-After setting `vmid` in `/etc/ugreen-dxp-pve-truenas.toml`, restart the services:
+After changing `vmid` in `/etc/ugreen-dxp-pve-truenas.toml`, restart the services:
 
 ```bash
 systemctl restart ugreen-truenas-zfs.service ugreen-truenas-fan.service

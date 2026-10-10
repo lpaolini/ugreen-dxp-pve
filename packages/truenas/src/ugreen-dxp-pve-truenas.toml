@@ -3,8 +3,8 @@
 # Apply changes with:
 #   systemctl restart ugreen-truenas-fan.service ugreen-truenas-zfs.service
 
-# Proxmox VM ID of the TrueNAS Scale VM. Both services exit until it is set.
-# vmid = 100
+# Proxmox VM ID of the TrueNAS Scale VM.
+vmid = 100
 
 # Log every poll in detail.
 debug = false

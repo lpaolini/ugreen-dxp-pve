@@ -54,20 +54,13 @@ def dbg(msg):
 def configure(config):
     """Apply a loaded configuration to the module settings."""
     global VMID, DEBUG, POLL_INTERVAL, BAYS, ALERT_THRESHOLD, DISK_LOOKS
-    VMID = config.vmid or ""
+    VMID = config.vmid
     DEBUG = config.debug
     POLL_INTERVAL = config.zfs.poll_interval
     BAYS = {str(n): path for n, path in enumerate(config.zfs.bays, 1)}
     ALERT_THRESHOLD = config.zfs.alert_threshold
     DISK_LOOKS = config.disk
     LAST_COLOR.clear()
-
-
-def require_vmid():
-    if VMID:
-        return True
-    log("vmid is not configured; set vmid in /etc/ugreen-dxp-pve-truenas.toml")
-    return False
 
 
 def _guest_spindown_arg(bay, path):
@@ -362,9 +355,6 @@ def main():
         configure(load(args.config))
     except ConfigError as e:
         log(f"invalid configuration: {e}")
-        sys.exit(1)
-
-    if not require_vmid():
         sys.exit(1)
 
     if args.start:

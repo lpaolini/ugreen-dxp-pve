@@ -36,9 +36,7 @@ Both services poll every 30 seconds. Their configuration lives in one file,
 `/etc/ugreen-dxp-pve-truenas.toml` (reference copy:
 `/usr/share/ugreen-dxp-pve-truenas/ugreen-dxp-pve-truenas.toml`):
 
-- `vmid`: the Proxmox VM ID of your TrueNAS Scale VM. It is commented out on a
-  fresh install; set it before the services can run. Without it they exit
-  instead of guessing.
+- `vmid`: the Proxmox VM ID of your TrueNAS Scale VM, `100` by default.
 - `[fan]`: poll interval, the disk and CPU fan curves, PWM limits and the
   hwmon device. The fan helper finds the `/sys/class/hwmon/hwmon*` directory
   whose `name` matches `hwmon_regex` (an ITE chip exposed by the it87 driver,
@@ -115,17 +113,17 @@ sudo apt install ./ugreen-dxp-pve-truenas_latest.deb
 The package installs the helpers to `/usr/bin`, the systemd units to
 `/lib/systemd/system`, creates `/etc/ugreen-dxp-pve-truenas.toml` if it does
 not exist, reloads systemd, and enables the fan and ZFS services. An existing
-`/etc/ugreen-dxp-pve-truenas.toml` is never overwritten. The services will not
-run successfully until `vmid` is configured.
+`/etc/ugreen-dxp-pve-truenas.toml` is never overwritten. The services query
+the VM with ID `100` unless you set another one.
 
-So, after installing, set `vmid` to the Proxmox VM ID of your TrueNAS Scale VM:
+If your TrueNAS Scale VM has a different ID, set `vmid` after installing:
 
 ```bash
 sudo nano /etc/ugreen-dxp-pve-truenas.toml
 ```
 
 ```toml
-vmid = 100
+vmid = 105
 ```
 
 Then restart the services so they read the updated configuration:

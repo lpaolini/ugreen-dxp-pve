@@ -62,7 +62,7 @@ def dbg(msg):
 def configure(config):
     """Apply a loaded configuration to the module settings."""
     global VMID, DEBUG, POWER_LED_FAULT_LOOK
-    VMID = config.vmid or ""
+    VMID = config.vmid
     DEBUG = config.debug
     POWER_LED_FAULT_LOOK = config.power["FAULT"]
     configure_fan(config.fan)
@@ -93,13 +93,6 @@ def configure_fan(fan):
     POLL_INTERVAL = fan.poll_interval
     RESET_PWM_ON_EXIT = fan.reset_pwm_on_exit
     TEMP_CHIP_REGEX = fan.temp_chip_regex
-
-
-def require_vmid():
-    if VMID:
-        return True
-    log("vmid is not configured; set vmid in /etc/ugreen-dxp-pve-truenas.toml")
-    return False
 
 
 def clamp(value, low, high):
@@ -469,9 +462,6 @@ def main():
 
     if args.stop:
         sys.exit(0 if apply_fan_auto() else 1)
-
-    if not require_vmid():
-        sys.exit(1)
 
     if args.start:
         run_loop()
