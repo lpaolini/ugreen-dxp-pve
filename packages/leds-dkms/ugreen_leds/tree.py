@@ -5,6 +5,7 @@ import os
 from .contribution import MAX_CHARS, format_look
 
 RUN_ROOT = "/run/ugreen-dxp-leds"
+STATUS_PATH = os.path.join(RUN_ROOT, ".status")
 
 
 def producer_dirs(run_root):

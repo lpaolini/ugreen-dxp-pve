@@ -220,6 +220,23 @@ class BindTest(unittest.TestCase):
         self.assertEqual((rc, sleeps), (1, []))
         self.assertIn("i2c-9 does not exist", err)
 
+    def test_unbind_works_with_an_invalid_config(self):
+        self.sys.add_device(1, "led-ugreen")
+        path = os.path.join(self.tmp.name, "broken.toml")
+        with open(path, "w") as f:
+            f.write("[netdev\n")
+        rc, out, err, _ = self.run_main("unbind", "--config", path)
+        self.assertEqual(rc, 0)
+        self.assertIn("Unbound", out)
+        self.assertIn("invalid configuration", err)
+        self.assertEqual(self.sys.writes, [("delete_device", "0x3a")])
+
+    def test_bind_fails_on_an_invalid_config(self):
+        path = os.path.join(self.tmp.name, "broken.toml")
+        with open(path, "w") as f:
+            f.write("[netdev\n")
+        self.assertEqual(self.run_main("bind", "--config", path)[0], 1)
+
     def test_unbind_never_waits(self):
         rc, _, _, sleeps = self.run_main("unbind", "--config", self.config("[bind]\ni2c_bus = 9"))
         self.assertEqual((rc, sleeps), (1, []))

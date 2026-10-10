@@ -110,6 +110,17 @@ class DaemonTest(unittest.TestCase):
         self.daemon.run_once()
         self.assertEqual(self.writer.calls, [])
 
+    def test_label_only_change_is_not_rewritten(self):
+        self.contribute("zfs", "disk1", "priority=70 color=#002800 effect=blink:500:500 state=OFFLINE")
+        self.daemon.run_once()
+        self.writer.calls.clear()
+        self.contribute("zfs", "disk1", "priority=60 color=#002800 effect=blink:500:500 state=REMOVED")
+        self.daemon.run_once()
+        self.assertEqual(self.writer.calls, [])
+        disk1 = self.status()["leds"]["disk1"]
+        self.assertEqual(disk1["look"]["state"], "REMOVED")
+        self.assertTrue(disk1["applied"])
+
     def test_network_led_is_written_again_only_after_a_reload(self):
         self.daemon.run_once()
         self.writer.calls.clear()

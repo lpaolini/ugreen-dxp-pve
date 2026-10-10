@@ -137,17 +137,20 @@ def main(argv=None, write=write_attr, sleep=time.sleep, clock=time.monotonic):
         config = load_config(args.config, led_root=os.path.join(args.sys_root, "class", "leds"))
     except ConfigError as e:
         print(f"invalid configuration: {e}", file=sys.stderr)
-        return 1
+        if args.action == "bind":
+            return 1
+        config = None  # unbinding must work without a valid LED config
 
     if args.action == "bind":
         action, deadline = bind, clock() + args.wait
     else:
-        reset_leds(config, write)
+        if config is not None:
+            reset_leds(config, write)
         action, deadline = unbind, clock()
     waiting_for = None
     while True:
         try:
-            bus = find_bus(list_adapters(args.sys_root), config.i2c_bus)
+            bus = find_bus(list_adapters(args.sys_root), config and config.i2c_bus)
             if bus is None:
                 raise NotReady(f"I2C adapter {ADAPTER_NAME!r} not found; "
                                f"set [bind] i2c_bus in {CONFIG_PATH}")

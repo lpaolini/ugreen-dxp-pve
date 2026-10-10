@@ -6,8 +6,7 @@ import sys
 
 from .config import CONTRIBUTED, ConfigError, add_config_option, load_config
 from .contribution import parse_look
-from .daemon import STATUS_PATH
-from .tree import RUN_ROOT, clear, producer_dir, publish
+from .tree import RUN_ROOT, STATUS_PATH, clear, producer_dir, publish
 
 
 def _label(look):
@@ -39,7 +38,7 @@ def show_status(path):
     try:
         with open(path) as f:
             print(format_status(json.load(f)))
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, KeyError, TypeError) as e:
         print(f"daemon status unavailable: {e}", file=sys.stderr)
         return 1
     return 0

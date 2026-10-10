@@ -10,10 +10,9 @@ import sys
 from . import sysfs
 from .config import LED_NAMES, ConfigError, add_config_option, load_config
 from .resolve import diff, resolve
-from .tree import RUN_ROOT, producer_dirs, scan
+from .tree import RUN_ROOT, STATUS_PATH, producer_dirs, scan
 from .watch import InotifyWatcher
 
-STATUS_PATH = os.path.join(RUN_ROOT, ".status")
 RESYNC_INTERVAL = 30  # seconds between passes when nothing changes
 
 
@@ -52,8 +51,9 @@ class Daemon:
         os.makedirs(self.run_root, exist_ok=True)  # recreate it if removed at runtime
         self.watcher.sync(producer_dirs(self.run_root))
         resolution = resolve(scan(self.run_root), self.config)
-        # A Look for the power and disk LEDs; the attribute pairs for the network LED.
-        wanted = {name: self.config.netdev if name == "netdev" else resolution.looks[name]
+        # The (attribute, value) writes per LED: only a change in these is repainted.
+        wanted = {name: self.config.netdev if name == "netdev"
+                  else sysfs.look_attrs(resolution.looks[name])
                   for name in LED_NAMES}
         # Forget LEDs whose device vanished or was recreated (driver reload, rebind).
         self.painted = {
@@ -68,8 +68,7 @@ class Daemon:
                 absent.add(led_name)
                 continue
             shown = wanted[led_name]
-            attrs = shown if led_name == "netdev" else sysfs.look_attrs(shown)
-            failures = sysfs.apply(path, attrs, write=self.write_attr)
+            failures = sysfs.apply(path, shown, write=self.write_attr)
             if failures:
                 errors[led_name] = failures
                 self.painted.pop(led_name, None)  # retry on the next pass
@@ -77,7 +76,7 @@ class Daemon:
                 self.painted[led_name] = (shown, ino)
 
         messages = list(resolution.problems)
-        messages += [f"{led}: LED path missing: {self.config.led_path(led)}" for led in absent]
+        messages += [f"{led}: LED path missing: {self.config.led_path(led)}" for led in LED_NAMES if led in absent]
         messages += [f"{led}: {error}" for led, errs in errors.items() for error in errs]
         status = status_data(resolution, self.config, wanted, errors, self.applied(), absent)
         try:

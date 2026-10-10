@@ -133,6 +133,13 @@ class MainTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("power    NORMAL         (default)", out)
 
+    def test_status_of_another_shape_is_not_a_traceback(self):
+        with open(os.path.join(self.tmp.name, "status"), "w") as f:
+            json.dump({"leds": {"power": {}}, "problems": []}, f)
+        rc, _, err = self.run_cli("status")
+        self.assertEqual(rc, 1)
+        self.assertIn("daemon status unavailable", err)
+
 
 if __name__ == "__main__":
     unittest.main()
