@@ -43,8 +43,8 @@ Both services poll every 30 seconds. Their configuration lives in one file,
   whose `name` matches `hwmon_regex` (an ITE chip exposed by the it87 driver,
   such as `it8613`) and uses `pwm_channel` to build the PWM, PWM enable and fan
   RPM paths. If that does not fit your system, pin `pwm_path`,
-  `pwm_enable_path` and `input_path`; `temp_warning` and `temp_alert` for the
-  power LED.
+  `pwm_enable_path` and `input_path`. `temp_warning` and `temp_alert` set the
+  disk temperatures at which the power LED turns orange and red.
 - `[zfs]`: poll interval, `alert_threshold` and `bays`, the disk path inside
   TrueNAS of each front-panel bay.
 - `[power.*]` and `[disk.*]`: how each state looks on the LEDs (see the
