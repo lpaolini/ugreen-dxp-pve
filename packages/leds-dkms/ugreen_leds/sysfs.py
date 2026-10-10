@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
-"""Write a state's attributes to one LED class device."""
+"""Write attributes to one LED class device."""
 import os
+
+from .contribution import rgb
 
 
 def write_attr(path, value):
@@ -12,13 +14,26 @@ def write_attr(path, value):
         os.close(fd)
 
 
-def apply(led_path, state, write=write_attr):
-    """Write every attribute of `state` to `led_path`, in order.
+def look_attrs(look):
+    """The (attribute, value) writes that show `look`, in order: trigger first.
+
+    Black is an LED switched off: colour 0 0 0 at brightness 1, without effect.
+    """
+    if look.color == "#000000":
+        return (("trigger", "none"), ("color", "0 0 0"), ("blink_type", "none"),
+                ("brightness", "1"))
+    blink = look.effect.replace(":", " ")  # "blink:500:500" -> "blink 500 500"; "none" stays
+    return (("trigger", "none"), ("color", rgb(look.color)), ("blink_type", blink),
+            ("brightness", "255"))
+
+
+def apply(led_path, attrs, write=write_attr):
+    """Write every (attribute, value) of `attrs` to `led_path`, in order.
 
     Returns error messages for attributes that could not be written (empty on success).
     """
     errors = []
-    for attr, value in state.attrs:
+    for attr, value in attrs:
         path = os.path.join(led_path, attr)
         try:
             write(path, value)

@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: MIT
-"""The producer state tree: /run/ugreen-dxp-pve/<producer>/<led>."""
+"""The contribution tree: /run/ugreen-dxp-leds/<producer>/<led>."""
 import os
 
-RUN_ROOT = "/run/ugreen-dxp-pve"
-MAX_STATE_BYTES = 256
+from .contribution import MAX_CHARS, format_look
+
+RUN_ROOT = "/run/ugreen-dxp-leds"
 
 
 def producer_dirs(run_root):
@@ -37,7 +38,7 @@ def scan(run_root):
                 continue
             try:
                 with open(entry.path, encoding="utf-8", errors="replace") as f:
-                    raw = f.read(MAX_STATE_BYTES)
+                    raw = f.read(MAX_CHARS + 1)  # one more, so parse_look() rejects it
             except OSError:  # removed or replaced while scanning
                 continue
             result.setdefault(entry.name, []).append((producer, raw))
@@ -54,12 +55,12 @@ def producer_dir(run_root=RUN_ROOT, environ=os.environ):
     return runtime_dir(environ) or os.path.join(run_root, "manual")
 
 
-def publish(directory, led, state):
-    """Atomically write `state` as the content of `directory/led`."""
+def publish(directory, led, look):
+    """Atomically write `look` (a contribution.Look) as the content of `directory/led`."""
     os.makedirs(directory, exist_ok=True)
     tmp = os.path.join(directory, f".{led}.tmp")
     with open(tmp, "w") as f:
-        f.write(f"{state}\n")
+        f.write(f"{format_look(look)}\n")
     os.replace(tmp, os.path.join(directory, led))
 
 

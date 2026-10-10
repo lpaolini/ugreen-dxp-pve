@@ -2,49 +2,56 @@ import os
 import tempfile
 import unittest
 
-from ugreen_leds.config import ConfigError, build, deep_merge, load_config
+from ugreen_leds.config import ConfigError, build, load_config
+from ugreen_leds.contribution import Look
 
 MINIMAL = {
-    "leds": {"power": {"path": "/sys/class/leds/power", "default": "NORMAL"}},
-    "states": {"NORMAL": {"priority": 0, "color": "0 64 16"}},
+    "netdev": {"device_name": "eth0", "color": "#0040ff"},
+    "shutdown": {"color": "#ffffff"},
+    "power": {"NORMAL": {"priority": 100, "color": "#004010"}},
 }
+NORMAL = {"priority": 100, "color": "#004010"}
 
 
-def with_state(**table):
-    data = {"leds": MINIMAL["leds"], "states": {"NORMAL": {"priority": 0, **table}}}
-    return build(data).states["NORMAL"]
-
-
-class DeepMergeTest(unittest.TestCase):
-    def test_override_replaces_leaf_and_keeps_order(self):
-        base = {"states": {"A": {"priority": 0, "color": "1 1 1", "brightness": 5}}}
-        override = {"states": {"A": {"color": "2 2 2"}, "B": {"priority": 1}}}
-        merged = deep_merge(base, override)
-        self.assertEqual(list(merged["states"]["A"].items()),
-                         [("priority", 0), ("color", "2 2 2"), ("brightness", 5)])
-        self.assertEqual(merged["states"]["B"], {"priority": 1})
-
-    def test_inputs_are_not_mutated(self):
-        base = {"a": {"b": 1}}
-        deep_merge(base, {"a": {"b": 2}})
-        self.assertEqual(base, {"a": {"b": 1}})
+def changed(section, value):
+    """MINIMAL with one top-level section replaced (None removes it)."""
+    data = dict(MINIMAL)
+    if value is None:
+        data.pop(section, None)
+    else:
+        data[section] = value
+    return data
 
 
 class BuildTest(unittest.TestCase):
     def test_minimal_config(self):
         config = build(MINIMAL)
-        self.assertEqual(config.leds["power"].default, "NORMAL")
-        self.assertEqual(config.states["NORMAL"].attrs, (("color", "0 64 16"),))
         self.assertIsNone(config.i2c_bus)
+        self.assertEqual(config.power, {"NORMAL": Look(100, "#004010", state="NORMAL")})
+        self.assertEqual(config.shutdown, Look(0, "#ffffff"))
+        self.assertEqual(config.netdev, (
+            ("trigger", "netdev"), ("device_name", "eth0"), ("brightness", "255"),
+            ("color", "0 64 255"), ("link", "1"), ("tx", "1"), ("rx", "1"), ("interval", "50"),
+        ))
+        self.assertEqual(config.led_path("disk1"), "/sys/class/leds/ugreen:white:disk1")
 
-    def test_trigger_is_written_first_then_table_order(self):
-        state = with_state(brightness=255, trigger="netdev", device_name="vmbr0")
-        self.assertEqual([key for key, _ in state.attrs],
-                         ["trigger", "brightness", "device_name"])
+    def test_led_root(self):
+        self.assertEqual(build(MINIMAL, led_root="/tmp/x").led_path("power"),
+                         "/tmp/x/ugreen:white:power")
 
-    def test_values_become_strings_and_colors_are_normalised(self):
-        state = with_state(color="#ff0000", link=1, tx=True)
-        self.assertEqual(dict(state.attrs), {"color": "255 0 0", "link": "1", "tx": "1"})
+    def test_power_looks(self):
+        config = build(changed("power", {
+            "NORMAL": NORMAL,
+            "FAULT": {"priority": 10, "color": "#FF0000", "effect": "blink:500:500"},
+        }))
+        self.assertEqual(config.power["FAULT"], Look(10, "#ff0000", "blink:500:500", "FAULT"))
+
+    def test_netdev_settings(self):
+        config = build(changed("netdev", {"device_name": "vmbr1", "color": "#000001",
+                                          "link": True, "tx": 0, "rx": False, "interval": 100}))
+        self.assertEqual(dict(config.netdev), {
+            "trigger": "netdev", "device_name": "vmbr1", "brightness": "255", "color": "0 0 1",
+            "link": "1", "tx": "0", "rx": "0", "interval": "100"})
 
     def test_i2c_bus(self):
         self.assertEqual(build({**MINIMAL, "bind": {"i2c_bus": 1}}).i2c_bus, 1)
@@ -53,23 +60,27 @@ class BuildTest(unittest.TestCase):
                 build({**MINIMAL, "bind": {"i2c_bus": bad}})
 
     def test_invalid_configs(self):
+        eth0 = {"device_name": "eth0", "color": "#000000"}
         cases = {
-            "unknown top-level": {**MINIMAL, "extra": {}},
-            "no leds": {"states": MINIMAL["states"]},
-            "relative path": {"leds": {"power": {"path": "sys/x", "default": "NORMAL"}},
-                              "states": MINIMAL["states"]},
-            "unknown default": {"leds": {"power": {"path": "/x", "default": "NOPE"}},
-                                "states": MINIMAL["states"]},
-            "unknown led key": {"leds": {"power": {"path": "/x", "default": "NORMAL", "x": 1}},
-                                "states": MINIMAL["states"]},
-            "unhashable default": {"leds": {"power": {"path": "/x", "default": ["NORMAL"]}},
-                                   "states": MINIMAL["states"]},
-            "missing priority": {"leds": MINIMAL["leds"], "states": {"NORMAL": {}}},
-            "bool priority": {"leds": MINIMAL["leds"], "states": {"NORMAL": {"priority": True}}},
-            "bad state name": {"leds": MINIMAL["leds"],
-                               "states": {**MINIMAL["states"], "BAD NAME": {"priority": 0}}},
-            "states not a table": {"leds": MINIMAL["leds"], "states": 1},
-            "leds not a table": {"leds": [{"path": "/x"}], "states": MINIMAL["states"]},
+            "old states table": {**MINIMAL, "states": {}},
+            "old leds table": {**MINIMAL, "leds": {}},
+            "no power looks": changed("power", None),
+            "no NORMAL": changed("power", {"FAULT": NORMAL}),
+            "bad look name": changed("power", {"NORMAL": NORMAL, "BAD NAME": NORMAL}),
+            "look not a table": changed("power", {"NORMAL": 1}),
+            "power not a table": changed("power", 1),
+            "unknown look key": changed("power", {"NORMAL": {**NORMAL, "brightness": 1}}),
+            "rgb colour": changed("power", {"NORMAL": {**NORMAL, "color": "0 64 16"}}),
+            "old blink format": changed("power", {"NORMAL": {**NORMAL, "effect": "blink 500 500"}}),
+            "missing priority": changed("power", {"NORMAL": {"color": "#004010"}}),
+            "no shutdown colour": changed("shutdown", {}),
+            "unknown shutdown key": changed("shutdown", {"color": "#ffffff", "x": 1}),
+            "no netdev": changed("netdev", None),
+            "device name with space": changed("netdev", {**eth0, "device_name": "vm br0"}),
+            "device name too long": changed("netdev", {**eth0, "device_name": "x" * 16}),
+            "netdev flag 2": changed("netdev", {**eth0, "link": 2}),
+            "netdev interval 0": changed("netdev", {**eth0, "interval": 0}),
+            "unknown netdev key": changed("netdev", {**eth0, "trigger": "none"}),
             "bind not a table": {**MINIMAL, "bind": 1},
             "unknown bind key": {**MINIMAL, "bind": {"i2c-bus": 1}},
         }
@@ -77,26 +88,9 @@ class BuildTest(unittest.TestCase):
             with self.subTest(label), self.assertRaises(ConfigError):
                 build(data)
 
-    def test_invalid_state_attributes(self):
-        cases = {
-            "color": {"color": "red"},
-            "blink_type": {"blink_type": "blink 500"},
-            "brightness range": {"brightness": 256},
-            "brightness type": {"brightness": "255"},
-            "path traversal": {"../color": "1"},
-            "trailing newline in name": {"trigger\n": "none"},
-            "trailing newline in value": {"blink_type": "none\n"},
-            "integer color": {"color": 100000},
-            "float": {"interval": 1.5},
-        }
-        for label, table in cases.items():
-            with self.subTest(label), self.assertRaises(ConfigError):
-                with_state(**table)
-
-    def test_valid_blink_types(self):
-        for value in ("none", "blink 500 500", "breath 2000 0"):
-            with self.subTest(value=value):
-                self.assertEqual(dict(with_state(blink_type=value).attrs)["blink_type"], value)
+    def test_errors_name_the_setting(self):
+        with self.assertRaisesRegex(ConfigError, r"power\.NORMAL: color must be #rrggbb"):
+            build(changed("power", {"NORMAL": {"priority": 100, "color": "green"}}))
 
 
 class LoadConfigTest(unittest.TestCase):
@@ -110,39 +104,33 @@ class LoadConfigTest(unittest.TestCase):
             f.write(text)
         return path
 
-    def test_layers_merge_and_missing_files_are_skipped(self):
-        base = self.write("base.toml", """
-[leds.power]
-path = "/sys/class/leds/power"
-default = "NORMAL"
+    def test_reads_a_file(self):
+        path = self.write("leds.toml", """
+[netdev]
+device_name = "vmbr0"
+color = "#0040ff"
 
-[states.NORMAL]
-priority = 0
-color = "0 64 16"
-brightness = 255
+[shutdown]
+color = "#ffffff"
+
+[power.NORMAL]
+priority = 100
+color = "#004010"
 """)
-        override = self.write("override.toml", """
-[states.NORMAL]
-color = "#ff0000"
-""")
+        config = load_config(path, led_root="/x")
+        self.assertEqual(dict(config.netdev)["device_name"], "vmbr0")
+        self.assertEqual(config.led_root, "/x")
+
+    def test_errors_name_the_file(self):
         missing = os.path.join(self.tmp.name, "missing.toml")
-        config = load_config([base, missing, override])
-        self.assertEqual(config.states["NORMAL"].attrs,
-                         (("color", "255 0 0"), ("brightness", "255")))
-
-    def test_syntax_error_names_the_file(self):
-        path = self.write("broken.toml", "[leds\n")
-        with self.assertRaises(ConfigError) as ctx:
-            load_config([path])
-        self.assertIn("broken.toml", str(ctx.exception))
-
-    def test_unreadable_files_raise_config_error(self):
         not_utf8 = os.path.join(self.tmp.name, "latin1.toml")
         with open(not_utf8, "wb") as f:
             f.write(b"# caf\xe9\n")
-        for path in (not_utf8, self.tmp.name):  # invalid UTF-8, a directory
-            with self.subTest(path=path), self.assertRaises(ConfigError):
-                load_config([path])
+        for path in (self.write("broken.toml", "[netdev\n"), missing, not_utf8, self.tmp.name):
+            with self.subTest(path=path):
+                with self.assertRaises(ConfigError) as ctx:
+                    load_config(path)
+                self.assertIn(path, str(ctx.exception))
 
 
 if __name__ == "__main__":

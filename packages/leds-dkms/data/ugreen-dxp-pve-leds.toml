@@ -1,20 +1,41 @@
-# Local overrides for ugreen-dxp-pve-leds.service.
-#
-# Package defaults live in /usr/share/ugreen-dxp-pve-leds/leds.toml. A key set
-# here replaces the same key there; everything else keeps the package default.
+# Configuration for ugreen-dxp-pve-leds.service and ugreen-dxp-pve-leds-bind.service.
 #
 # Apply LED changes with:   systemctl reload ugreen-dxp-pve-leds.service
 # Apply [bind] changes with: systemctl restart ugreen-dxp-pve-leds-bind.service
 #
-# Force the I2C bus that owns the LED controller (default: auto-detect by name).
-# Bus numbers can change between boots, so pin one only if detection fails:
-# [bind]
+# Colours are "#rrggbb". Effects are "none", "blink:ON:OFF" or "breath:ON:OFF"
+# (milliseconds). The power LED and the disk LEDs show what other services
+# publish under /run/ugreen-dxp-leds/; see the package README.
+
+[bind]
+# Force the I2C bus that owns the LED controller (default: auto-detect the
+# "SMBus I801 adapter"). Bus numbers can change between boots: pin one only if
+# detection fails.
 # i2c_bus = 1
-#
-# Use another interface for the network LED:
-# [states.NETDEV]
-# device_name = "vmbr1"
-#
-# Change the power LED colour ("R G B" or "#rrggbb"):
-# [states.NORMAL]
-# color = "#004010"
+
+# The network LED follows traffic on one interface (kernel netdev trigger).
+[netdev]
+device_name = "vmbr0"
+color = "#0040ff"
+link = 1
+tx = 1
+rx = 1
+interval = 50
+
+# Shown on every LED when the controller is released (shutdown, reboot, package
+# removal), just before the LEDs are switched off. The controller keeps it while
+# the NAS is off and shows it in its own startup sequence.
+[shutdown]
+color = "#ffffff"
+
+# Named looks for the power LED. NORMAL is required: it is shown while no
+# service publishes a look for the power LED. `ugreen-dxp-led set power NAME`
+# publishes any of them by hand. The lowest priority wins.
+[power.NORMAL]
+priority = 100
+color = "#004010"
+
+[power.FAULT]
+priority = 10
+color = "#ff0000"
+effect = "blink:500:500"

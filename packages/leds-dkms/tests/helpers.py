@@ -2,30 +2,29 @@ import os
 
 from ugreen_leds.config import build
 
+ATTRS = ("trigger", "color", "blink_type", "brightness")
 
-def make_config(led_root="/sys/class/leds", leds=("power", "disk1")):
-    """A small valid Config whose LED paths live under `led_root`."""
+
+def make_config(led_root="/sys/class/leds"):
+    """A small valid Config whose LEDs live under `led_root`."""
     return build({
-        "leds": {
-            name: {"path": os.path.join(led_root, name),
-                   "default": "NORMAL" if name == "power" else "OFF"}
-            for name in leds
+        "netdev": {"device_name": "eth0", "color": "#0040ff"},
+        "shutdown": {"color": "#ffffff"},
+        "power": {
+            "NORMAL": {"priority": 100, "color": "#004010"},
+            "FAULT": {"priority": 10, "color": "#ff0000", "effect": "blink:500:500"},
         },
-        "states": {
-            "NORMAL": {"priority": 0, "trigger": "none", "color": "0 64 16"},
-            "FAULT": {"priority": 100, "trigger": "none", "color": "255 0 0",
-                      "blink_type": "blink 500 500"},
-            "OFF": {"priority": 0, "color": "0 0 0"},
-            "ONLINE": {"priority": 10, "color": "0 40 0"},
-            "DEGRADED": {"priority": 40, "color": "80 40 0"},
-            "FAULTED": {"priority": 70, "color": "80 0 0"},
-        },
-    })
+    }, led_root=led_root)
 
 
-def make_led_dirs(led_root, names, attrs=("trigger", "color", "blink_type", "brightness")):
+def led_dir(led_root, name):
+    """The class device directory of LED `name`, as the driver names it."""
+    return os.path.join(led_root, f"ugreen:white:{name}")
+
+
+def make_led_dirs(led_root, names, attrs=ATTRS):
     """Create fake sysfs LED directories with empty attribute files."""
     for name in names:
-        os.makedirs(os.path.join(led_root, name), exist_ok=True)
+        os.makedirs(led_dir(led_root, name), exist_ok=True)
         for attr in attrs:
-            open(os.path.join(led_root, name, attr), "w").close()
+            open(os.path.join(led_dir(led_root, name), attr), "w").close()

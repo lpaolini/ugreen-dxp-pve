@@ -5,8 +5,8 @@ import os
 import sys
 import time
 
-from .config import OVERRIDES_PATH, ConfigError, add_config_option, load_config
-from .sysfs import apply, write_attr
+from .config import CONFIG_PATH, LED_NAMES, ConfigError, add_config_option, load_config
+from .sysfs import apply, look_attrs, write_attr
 
 MODULE_NAME = "led-ugreen"
 I2C_ADDR = "0x3a"
@@ -105,20 +105,20 @@ def unbind(sys_root, bus, write=write_attr):
 
 
 def reset_leds(config, write=write_attr):
-    """Hand every LED back in the SHUTDOWN look, switched off.
+    """Hand every LED back in the [shutdown] colour, switched off.
 
     The controller keeps colours while the host is off and replays them in its
     own startup sequence, so this decides how the next boot looks. Best effort:
     an LED that cannot be written is skipped.
     """
-    shutdown = config.states.get("SHUTDOWN")
-    for led in config.leds.values():
-        if not os.path.isdir(led.path):
+    attrs = look_attrs(config.shutdown)
+    for name in LED_NAMES:
+        path = config.led_path(name)
+        if not os.path.isdir(path):
             continue
-        if shutdown:
-            apply(led.path, shutdown, write=write)
+        apply(path, attrs, write=write)
         try:
-            write(os.path.join(led.path, "brightness"), "0")  # off, keeping the colour
+            write(os.path.join(path, "brightness"), "0")  # off, keeping the colour
         except OSError:
             pass
 
@@ -134,7 +134,7 @@ def main(argv=None, write=write_attr, sleep=time.sleep, clock=time.monotonic):
     args = parser.parse_args(argv)
 
     try:
-        config = load_config(args.config)
+        config = load_config(args.config, led_root=os.path.join(args.sys_root, "class", "leds"))
     except ConfigError as e:
         print(f"invalid configuration: {e}", file=sys.stderr)
         return 1
@@ -150,7 +150,7 @@ def main(argv=None, write=write_attr, sleep=time.sleep, clock=time.monotonic):
             bus = find_bus(list_adapters(args.sys_root), config.i2c_bus)
             if bus is None:
                 raise NotReady(f"I2C adapter {ADAPTER_NAME!r} not found; "
-                               f"set [bind] i2c_bus in {OVERRIDES_PATH}")
+                               f"set [bind] i2c_bus in {CONFIG_PATH}")
             print(action(args.sys_root, bus, write=write))
             return 0
         except NotReady as e:

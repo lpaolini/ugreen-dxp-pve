@@ -1,18 +1,20 @@
 # SPDX-License-Identifier: MIT
-"""Load, merge and validate the LED configuration (TOML)."""
+"""Load and validate the LED configuration (/etc/ugreen-dxp-pve-leds.toml)."""
+import os
 import re
 import tomllib
 from dataclasses import dataclass
 
-from .color import normalize_color
+from .contribution import Look, make_look, rgb
 
-OVERRIDES_PATH = "/etc/ugreen-dxp-pve-leds.toml"
-DEFAULT_PATHS = ("/usr/share/ugreen-dxp-pve-leds/leds.toml", OVERRIDES_PATH)
+CONFIG_PATH = "/etc/ugreen-dxp-pve-leds.toml"
+LED_ROOT = "/sys/class/leds"
+LED_NAMES = ("power", "netdev") + tuple(f"disk{n}" for n in range(1, 9))
+CONTRIBUTED = tuple(name for name in LED_NAMES if name != "netdev")
 
 # Used with fullmatch(): `$` would also accept a trailing newline.
 _NAME = re.compile(r"[A-Za-z0-9_-]+")
-_ATTR = re.compile(r"[a-z0-9_]+")
-_BLINK = re.compile(r"none|(blink|breath) [0-9]+ [0-9]+")
+_DEVICE = re.compile(r"[^\s/]{1,15}")  # a network interface name
 
 
 class ConfigError(Exception):
@@ -20,85 +22,94 @@ class ConfigError(Exception):
 
 
 @dataclass(frozen=True)
-class Led:
-    path: str
-    default: str
-
-
-@dataclass(frozen=True)
-class State:
-    name: str
-    priority: int
-    attrs: tuple  # ((attribute, value), ...) in write order, trigger first
-
-
-@dataclass(frozen=True)
 class Config:
-    leds: dict  # name -> Led, in config order
-    states: dict  # name -> State
     i2c_bus: int | None
+    netdev: tuple  # ((attribute, value), ...) for the network LED, in write order
+    shutdown: Look  # shown on every LED when the controller is released
+    power: dict  # name -> Look; NORMAL is the power LED while nothing is contributed
+    led_root: str = LED_ROOT
+
+    def led_path(self, name):
+        return os.path.join(self.led_root, f"ugreen:white:{name}")
 
 
 def _is_int(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def deep_merge(base, override):
-    """Return a new dict: `override` merged into `base`, recursing into tables.
-
-    Keys keep their position from `base`; keys only in `override` are appended.
-    """
-    merged = dict(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
 def add_config_option(parser):
-    parser.add_argument("--config", action="append",
-                        help="config file, repeatable (default: package defaults + /etc)")
+    parser.add_argument("--config", default=CONFIG_PATH,
+                        help="configuration file (default: %(default)s)")
 
 
-def load_config(paths=None):
-    """Read every existing file in `paths` (default: DEFAULT_PATHS), merge in order, validate."""
-    data = {}
-    for path in paths or DEFAULT_PATHS:
-        try:
-            with open(path, "rb") as f:
-                layer = tomllib.load(f)
-        except FileNotFoundError:
-            continue
-        except (OSError, ValueError) as e:  # unreadable, not UTF-8, or invalid TOML
-            raise ConfigError(f"{path}: {e}") from None
-        data = deep_merge(data, layer)
-    return build(data)
+def load_config(path=CONFIG_PATH, led_root=LED_ROOT):
+    """Read and validate the TOML file at `path`."""
+    try:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, ValueError) as e:  # missing, unreadable, not UTF-8, or invalid TOML
+        raise ConfigError(f"{path}: {e}") from None
+    return build(data, led_root)
 
 
-def build(data):
-    """Validate merged TOML data and return a Config."""
-    _reject_unknown("top level", data, {"bind", "leds", "states"})
-
-    states = {
-        name: _build_state(name, table)
-        for name, table in _table(data, "states").items()
-    }
-    leds = {
-        name: _build_led(name, table, states)
-        for name, table in _table(data, "leds").items()
-    }
-    if not leds:
-        raise ConfigError("no [leds.*] tables configured")
+def build(data, led_root=LED_ROOT):
+    """Validate parsed TOML data and return a Config."""
+    _reject_unknown("top level", data, {"bind", "netdev", "shutdown", "power"})
 
     bind = _table(data, "bind")
-    _reject_unknown("bind", bind, {"i2c_bus"})
+    _reject_unknown("[bind]", bind, {"i2c_bus"})
     i2c_bus = bind.get("i2c_bus")
     if i2c_bus is not None and not (_is_int(i2c_bus) and i2c_bus >= 0):
         raise ConfigError("bind.i2c_bus must be a non-negative integer")
 
-    return Config(leds=leds, states=states, i2c_bus=i2c_bus)
+    shutdown = _table(data, "shutdown")
+    _reject_unknown("[shutdown]", shutdown, {"color"})
+
+    power = {}
+    for name, table in _table(data, "power").items():
+        if not _NAME.fullmatch(name):
+            raise ConfigError(f"invalid power look name {name!r}: "
+                              f"use letters, digits, '_' or '-'")
+        if not isinstance(table, dict):
+            raise ConfigError(f"power.{name} must be a table")
+        _reject_unknown(f"[power.{name}]", table, {"priority", "color", "effect"})
+        power[name] = _look(f"power.{name}", table.get("priority"), table.get("color"),
+                            table.get("effect", "none"), state=name)
+    if "NORMAL" not in power:
+        raise ConfigError("[power.NORMAL] is required")
+
+    return Config(i2c_bus=i2c_bus, netdev=_netdev(_table(data, "netdev")),
+                  shutdown=_look("shutdown", 0, shutdown.get("color")),
+                  power=power, led_root=led_root)
+
+
+def _netdev(table):
+    _reject_unknown("[netdev]", table, {"device_name", "color", "link", "tx", "rx", "interval"})
+    device = table.get("device_name")
+    if not (isinstance(device, str) and _DEVICE.fullmatch(device)):
+        raise ConfigError(f"netdev.device_name must be a network interface name, got {device!r}")
+    color = _look("netdev", 0, table.get("color")).color
+    attrs = [("trigger", "netdev"), ("device_name", device), ("brightness", "255"),
+             ("color", rgb(color))]
+    for key in ("link", "tx", "rx"):
+        value = table.get(key, 1)
+        if isinstance(value, bool):
+            value = int(value)  # TOML true/false -> sysfs 1/0
+        if not (_is_int(value) and value in (0, 1)):
+            raise ConfigError(f"netdev.{key} must be 0 or 1")
+        attrs.append((key, str(value)))
+    interval = table.get("interval", 50)
+    if not (_is_int(interval) and interval > 0):
+        raise ConfigError("netdev.interval must be a positive integer (milliseconds)")
+    attrs.append(("interval", str(interval)))
+    return tuple(attrs)
+
+
+def _look(where, priority, color, effect="none", state=None):
+    try:
+        return make_look(priority, color, effect, state)
+    except ValueError as e:
+        raise ConfigError(f"{where}: {e}") from None
 
 
 def _table(data, key):
@@ -112,57 +123,3 @@ def _reject_unknown(where, table, allowed):
     extra = sorted(set(table) - allowed)
     if extra:
         raise ConfigError(f"{where}: unknown keys {', '.join(extra)}")
-
-
-def _check_table(kind, name, table):
-    if not _NAME.fullmatch(name):
-        raise ConfigError(f"invalid {kind} name {name!r}: use letters, digits, '_' or '-'")
-    if not isinstance(table, dict):
-        raise ConfigError(f"{kind}s.{name} must be a table")
-
-
-def _build_led(name, table, states):
-    _check_table("led", name, table)
-    path = table.get("path")
-    if not isinstance(path, str) or not path.startswith("/"):
-        raise ConfigError(f"leds.{name}.path must be an absolute path")
-    default = table.get("default")
-    if not isinstance(default, str) or default not in states:
-        raise ConfigError(f"leds.{name}.default must name a configured state, got {default!r}")
-    _reject_unknown(f"leds.{name}", table, {"path", "default"})
-    return Led(path=path, default=default)
-
-
-def _build_state(name, table):
-    _check_table("state", name, table)
-    priority = table.get("priority")
-    if not _is_int(priority):
-        raise ConfigError(f"states.{name}.priority must be an integer")
-
-    attrs = []
-    for key, value in table.items():
-        if key == "priority":
-            continue
-        if not _ATTR.fullmatch(key):
-            raise ConfigError(f"states.{name}: invalid attribute name {key!r}")
-        if isinstance(value, bool):
-            value = int(value)  # TOML true/false -> sysfs 1/0
-        if not isinstance(value, (str, int)):
-            raise ConfigError(f"states.{name}.{key} must be a string or an integer")
-        if key == "color":
-            if not isinstance(value, str):
-                raise ConfigError(f"states.{name}.color must be a string")
-            try:
-                value = normalize_color(value)
-            except ValueError as e:
-                raise ConfigError(f"states.{name}.color: {e}") from None
-        elif key == "blink_type" and not _BLINK.fullmatch(str(value)):
-            raise ConfigError(
-                f"states.{name}.blink_type must be 'none', 'blink ON OFF' or 'breath ON OFF'"
-            )
-        elif key == "brightness" and not (_is_int(value) and 0 <= value <= 255):
-            raise ConfigError(f"states.{name}.brightness must be an integer 0-255")
-        attrs.append((key, str(value)))
-
-    attrs.sort(key=lambda item: item[0] != "trigger")  # stable: trigger first
-    return State(name=name, priority=priority, attrs=tuple(attrs))

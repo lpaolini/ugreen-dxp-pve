@@ -9,6 +9,19 @@ from tests.helpers import make_led_dirs
 from ugreen_leds.bind import BindError, NotReady, bind, find_bus, list_adapters, main, unbind
 from ugreen_leds.sysfs import write_attr
 
+BASE_CONFIG = """
+[netdev]
+device_name = "eth0"
+color = "#0040ff"
+
+[shutdown]
+color = "#ffffff"
+
+[power.NORMAL]
+priority = 100
+color = "#004010"
+"""
+
 
 class FindBusTest(unittest.TestCase):
     def test_override_wins(self):
@@ -146,13 +159,11 @@ class BindTest(unittest.TestCase):
         with self.assertRaises(BindError):
             self.unbind()
 
-    def config(self, text):
-        """Write a config with `text`, a state N and (unless `text` has LEDs) one LED."""
-        if "[leds." not in text:
-            text += '\n[leds.power]\npath = "/x"\ndefault = "N"\n'
+    def config(self, text=""):
+        """Write a valid config with `text` (e.g. a [bind] table) at the top."""
         path = os.path.join(self.tmp.name, "leds.toml")
         with open(path, "w") as f:
-            f.write(text + "\n[states.N]\npriority = 0\n")
+            f.write(text + "\n" + BASE_CONFIG)
         return path
 
     def run_main(self, *args, on_sleep=None):
@@ -215,45 +226,17 @@ class BindTest(unittest.TestCase):
 
     def test_unbind_resets_every_led_before_releasing_the_controller(self):
         self.sys.add_device(1, "led-ugreen")
-        make_led_dirs(os.path.join(self.tmp.name, "leds"), ["power", "disk1"])
-        config = self.config(f"""
-[leds.power]
-path = "{self.tmp.name}/leds/power"
-default = "N"
-[leds.disk1]
-path = "{self.tmp.name}/leds/disk1"
-default = "N"
-[leds.disk5]
-path = "{self.tmp.name}/leds/disk5"
-default = "N"
-[states.SHUTDOWN]
-priority = 0
-trigger = "none"
-color = "#ffffff"
-""")
-        rc, out, _, _ = self.run_main("unbind", "--config", config)
+        make_led_dirs(os.path.join(self.tmp.name, "class", "leds"), ["power", "disk1"])
+        rc, out, _, _ = self.run_main("unbind", "--config", self.config())
         self.assertEqual(rc, 0)
         self.assertIn("Unbound", out)
+        white = [("trigger", "none"), ("color", "255 255 255"), ("blink_type", "none"),
+                 ("brightness", "255"), ("brightness", "0")]
         self.assertEqual(self.sys.writes, [
-            ("leds/power/trigger", "none"), ("leds/power/color", "255 255 255"),
-            ("leds/power/brightness", "0"),
-            ("leds/disk1/trigger", "none"), ("leds/disk1/color", "255 255 255"),
-            ("leds/disk1/brightness", "0"),
-            ("delete_device", "0x3a"),  # disk5 is absent and skipped
+            *[(f"class/leds/ugreen:white:power/{attr}", value) for attr, value in white],
+            *[(f"class/leds/ugreen:white:disk1/{attr}", value) for attr, value in white],
+            ("delete_device", "0x3a"),  # netdev and disk2-8 are absent and skipped
         ])
-
-    def test_unbind_without_shutdown_state_only_switches_leds_off(self):
-        self.sys.add_device(1, "led-ugreen")
-        make_led_dirs(os.path.join(self.tmp.name, "leds"), ["power"])
-        config = self.config(f"""
-[leds.power]
-path = "{self.tmp.name}/leds/power"
-default = "N"
-""")
-        rc, _, _, _ = self.run_main("unbind", "--config", config)
-        self.assertEqual(rc, 0)
-        self.assertEqual(self.sys.writes, [("leds/power/brightness", "0"),
-                                           ("delete_device", "0x3a")])
 
     def test_main_rejects_foreign_device_without_waiting(self):
         self.sys.add_device(1, "something-else")

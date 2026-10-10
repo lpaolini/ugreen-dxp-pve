@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 
+from ugreen_leds.contribution import Look
 from ugreen_leds.tree import clear, producer_dir, producer_dirs, publish, runtime_dir, scan
 
 
@@ -50,11 +51,15 @@ class TreeTest(unittest.TestCase):
         self.assertIsNone(runtime_dir({"RUNTIME_DIRECTORY": ""}))
         self.assertIsNone(runtime_dir({}))
 
+    def test_scan_reads_one_character_past_the_limit(self):
+        self.write("zfs/disk1", "x" * 1000)
+        self.assertEqual(len(scan(self.root)["disk1"][0][1]), 257)
+
     def test_producer_dir(self):
         cases = {
-            "/run/ugreen-dxp-pve/zfs": "/run/ugreen-dxp-pve/zfs",
-            "/run/ugreen-dxp-pve/fan:/run/other": "/run/ugreen-dxp-pve/fan",
-            "": "/run/ugreen-dxp-pve/manual",
+            "/run/ugreen-dxp-leds/truenas-zfs": "/run/ugreen-dxp-leds/truenas-zfs",
+            "/run/ugreen-dxp-leds/truenas-fan:/run/other": "/run/ugreen-dxp-leds/truenas-fan",
+            "": "/run/ugreen-dxp-leds/manual",
         }
         for runtime, expected in cases.items():
             with self.subTest(runtime=runtime):
@@ -63,11 +68,11 @@ class TreeTest(unittest.TestCase):
 
     def test_publish_creates_directory_and_clear(self):
         directory = os.path.join(self.root, "manual")
-        publish(directory, "power", "FAULT")
-        publish(directory, "power", "NORMAL")
+        publish(directory, "power", Look(10, "#ff0000", "blink:500:500", "FAULT"))
+        publish(directory, "power", Look(100, "#004010"))
         self.assertEqual(os.listdir(directory), ["power"])
         with open(os.path.join(directory, "power")) as f:
-            self.assertEqual(f.read(), "NORMAL\n")
+            self.assertEqual(f.read(), "priority=100 color=#004010\n")
         clear(directory, "power")
         clear(directory, "power")  # clearing twice is fine
         self.assertEqual(os.listdir(directory), [])
