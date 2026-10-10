@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Load and validate /etc/ugreen-dxp-pve-truenas.toml."""
+import math
 import re
 import tomllib
 from dataclasses import dataclass, fields
@@ -72,7 +73,7 @@ def _int(low, high=None):
 
 
 def _positive(value):
-    if not (_is_number(value) and value > 0):
+    if not (_is_number(value) and math.isfinite(value) and value > 0):
         raise ValueError(f"must be a positive number, got {value!r}")
     return value
 
@@ -109,16 +110,21 @@ def _curve(value):
         raise ValueError("must list at least two [temperature, pwm] points")
     points = []
     for point in value:
-        if not (isinstance(point, list) and len(point) == 2 and _is_number(point[0])):
+        if not (isinstance(point, list) and len(point) == 2 and _is_number(point[0])
+                and math.isfinite(point[0])):
             raise ValueError(f"invalid point {point!r}: expected [temperature, pwm]")
         points.append((point[0], _int(0, 255)(point[1])))
-    return tuple(sorted(points, key=lambda point: point[0]))
+    points.sort(key=lambda point: point[0])
+    if len({temp for temp, _ in points}) != len(points):
+        raise ValueError("temperatures must be distinct")
+    return tuple(points)
 
 
 def _bays(value):
     if not (isinstance(value, list) and 1 <= len(value) <= MAX_BAYS
-            and all(isinstance(path, str) and path.startswith("/") for path in value)):
-        raise ValueError(f"must list 1-{MAX_BAYS} absolute paths, bay 1 first")
+            and all(isinstance(path, str) and path.startswith("/") for path in value)
+            and len(set(value)) == len(value)):
+        raise ValueError(f"must list 1-{MAX_BAYS} distinct absolute paths, bay 1 first")
     return tuple(value)
 
 
@@ -151,10 +157,13 @@ def build(data):
     vmid = data.get("vmid")
     if vmid is not None:
         vmid = str(_checked("vmid", _int(1), vmid))
+    fan = _settings(Fan, "fan", _table(data, "fan"), FAN_CHECKS)
+    if fan.min_pwm > fan.max_pwm:
+        raise ConfigError("fan.min_pwm must not exceed fan.max_pwm")
     return Config(
         vmid=vmid,
         debug=_checked("debug", _bool, data.get("debug", False)),
-        fan=_settings(Fan, "fan", _table(data, "fan"), FAN_CHECKS),
+        fan=fan,
         zfs=_settings(Zfs, "zfs", _table(data, "zfs"), ZFS_CHECKS),
         power=_looks("power", _table(data, "power"), POWER_STATES),
         disk=_looks("disk", _table(data, "disk"), DISK_STATES),

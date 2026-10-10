@@ -87,6 +87,14 @@ class BuildTest(unittest.TestCase):
             "relative bay": (setter(("zfs", "bays"), ["dev/x"]), "zfs.bays"),
             "threshold above 1": (setter(("zfs", "alert_threshold"), 1.5), "zfs.alert_threshold"),
             "zero interval": (setter(("zfs", "poll_interval"), 0), "zfs.poll_interval"),
+            "duplicate curve temperatures": (setter(("fan", "hdd_curve"), [[30, 90], [30, 120]]), "temperatures must be distinct"),
+            "nan curve temperature": (setter(("fan", "cpu_curve"), [[float("nan"), 90], [30, 120]]), "fan.cpu_curve"),
+            "inf curve temperature": (setter(("fan", "cpu_curve"), [[float("inf"), 90], [30, 120]]), "fan.cpu_curve"),
+            "nan fan interval": (setter(("fan", "poll_interval"), float("nan")), "fan.poll_interval"),
+            "inf zfs interval": (setter(("zfs", "poll_interval"), float("inf")), "zfs.poll_interval"),
+            "duplicate bays": (setter(("zfs", "bays"), ["/a", "/a"]), "zfs.bays"),
+            "min above max pwm": (setter(("fan", "max_pwm"), 50), "fan.min_pwm must not exceed fan.max_pwm"),
+            "bool pwm": (setter(("fan", "min_pwm"), True), "fan.min_pwm"),
             "debug string": (setter(("debug",), "yes"), "debug"),
         }
         for label, (change, message) in cases.items():
