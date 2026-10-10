@@ -16,8 +16,8 @@ import threading
 from dataclasses import dataclass
 
 sys.dont_write_bytecode = True  # never leave .pyc files in the packaged library
-sys.path.append("/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
-sys.path.append("/usr/lib/ugreen-dxp-pve-truenas")
+# The LED library is shipped by ugreen-dxp-pve-leds-dkms.
+sys.path[:0] = ["/usr/lib/ugreen-dxp-pve-truenas", "/usr/lib/ugreen-dxp-pve-leds"]
 from ugreen_leds.tree import clear, publish, runtime_dir  # noqa: E402
 from ugreen_truenas.config import CONFIG_PATH, ConfigError, Fan, load  # noqa: E402
 

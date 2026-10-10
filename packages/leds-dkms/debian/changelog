@@ -9,7 +9,7 @@ ugreen-dxp-pve-leds-dkms (0.10.0) stable; urgency=medium
   * Configure the daemon in /etc/ugreen-dxp-pve-leds.toml: I2C bus, network
     LED, shutdown colour and named power LED looks. It replaces
     /etc/ugreen-dxp-pve-leds.conf; I2C_BUS and NETDEV_LED_DEVICE are
-    migrated.
+    migrated. Dev-channel override files are converted in place.
   * Split controller binding into ugreen-dxp-pve-leds-bind.service, which
     also unbinds on stop.
   * Add ugreen-dxp-led to publish, clear and inspect contributions.

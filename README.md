@@ -124,7 +124,8 @@ stable, delete `ugreen-dxp-pve-dev.list`, run `apt update`, and reinstall the
 stable versions explicitly (apt never downgrades on its own), for example
 `apt install ugreen-dxp-pve-truenas=0.9.10 ugreen-dxp-pve-leds-dkms=0.9.10 ugreen-dxp-pve-it87-dkms=0.9.10`.
 The stable 0.9.10 package reads the old `.conf` files again, so restore your
-settings from the `*.conf.migrated` files (or set `VMID` again).
+settings from the `*.conf.migrated` files (or set `VMID` again). The old LED settings
+are in `/etc/ugreen-dxp-pve-leds.conf.dpkg-bak`.
 
 ### Configuration files
 

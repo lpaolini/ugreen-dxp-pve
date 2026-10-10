@@ -115,6 +115,8 @@ if command -v systemctl >/dev/null 2>&1; then
   if [ -n "${2:-}" ]; then
     # Upgrade: replace the running processes with the new code.
     systemctl try-restart ugreen-truenas-zfs.service ugreen-truenas-fan.service || true
+    # The old services published under /run/ugreen-dxp-pve; nothing reads it now.
+    rm -rf /run/ugreen-dxp-pve
   fi
 fi
 POSTINST
@@ -159,9 +161,11 @@ chmod 0755 \
 cat > "${PKG_DIR}/usr/share/doc/${PACKAGE}/changelog" <<CHANGELOG
 ${PACKAGE} (${VERSION}) stable; urgency=medium
 
-  * Build UGREEN DXP Proxmox/TrueNAS helper package.
+  * Read all settings and the LED looks from /etc/ugreen-dxp-pve-truenas.toml,
+    created from the old .conf files on upgrade.
+  * Publish LED looks under /run/ugreen-dxp-leds/truenas-zfs and truenas-fan.
 
- -- Luca Paolini <lookap@gmail.com>  Fri, 21 Aug 2026 17:30:00 +0200
+ -- Luca Paolini <lookap@gmail.com>  Sat, 10 Oct 2026 12:00:00 +0200
 CHANGELOG
 gzip -n -9 "${PKG_DIR}/usr/share/doc/${PACKAGE}/changelog"
 
