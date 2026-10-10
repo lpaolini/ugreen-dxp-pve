@@ -3,6 +3,7 @@
 
 Used by the configuration migrations, which start from the shipped template.
 Arrays must be written on one line: a line starting with `[` is a table header.
+Arrays of tables (`[[...]]`) are not supported.
 """
 import json
 import re
@@ -17,7 +18,9 @@ def toml_value(value):
     if isinstance(value, (int, float)):
         return repr(value)
     if isinstance(value, str):
-        return json.dumps(value)  # a JSON string is a valid TOML basic string
+        # A JSON string is a valid TOML basic string, except that TOML also
+        # forbids a raw DEL and rejects surrogate pairs (so no ensure_ascii).
+        return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(toml_value(item) for item in value) + "]"
     raise TypeError(f"cannot write {value!r} as TOML")
@@ -41,17 +44,21 @@ def _table_body(lines, table):
 def set_key(text, table, key, value):
     """Return `text` with `key = value` in `[table]` (None: the top level).
 
-    Replaces the first line of that table that sets the key, commented out or
-    not; otherwise inserts the line right after the table header (top level:
+    Replaces the first line of that table that sets the key; failing that the
+    first commented-out `# key =` line; otherwise inserts the line right after the table header (top level:
     at the start). Raises KeyError if the table has no header.
     """
     lines = text.splitlines(keepends=True)
     first, end = _table_body(lines, table)
     line = f"{key} = {toml_value(value)}\n"
-    pattern = re.compile(rf"#?\s*{re.escape(key)}\s*=")
-    for index in range(first, end):
-        if pattern.match(lines[index].lstrip()):
-            lines[index] = line
-            return "".join(lines)
+    key_re = re.escape(key)
+    for pattern in (rf"{key_re}\s*=", rf"#\s*{key_re}\s*="):
+        pattern = re.compile(pattern)
+        for index in range(first, end):
+            if pattern.match(lines[index].lstrip()):
+                lines[index] = line
+                return "".join(lines)
+    if first and not lines[first - 1].endswith("\n"):
+        lines[first - 1] += "\n"
     lines.insert(first, line)
     return "".join(lines)

@@ -31,7 +31,8 @@ class ToTomlTest(unittest.TestCase):
         self.assertEqual(toml_value(["/a", "/b"]), '["/a", "/b"]')
 
     def test_strings_survive_a_toml_round_trip(self):
-        for value in ("^it[0-9]+$", "(?i)(drivetemp|nvme)", "café", 'q"uote\\'):
+        for value in ("^it[0-9]+$", "(?i)(drivetemp|nvme)", "café", 'q"uote\\',
+                      "\U0001F600", "a\x7fb", "tab\there"):
             with self.subTest(value=value):
                 self.assertEqual(tomllib.loads(f"x = {toml_value(value)}")["x"], value)
 
@@ -64,6 +65,16 @@ class SetKeyTest(unittest.TestCase):
     def test_key_sharing_a_prefix_is_not_matched(self):
         text = set_key('[a]\ninterval_ms = 1\n', "a", "interval", 2)
         self.assertEqual(tomllib.loads(text)["a"], {"interval": 2, "interval_ms": 1})
+
+    def test_real_key_wins_over_a_commented_example(self):
+        text = set_key('[a]\n# color = "#fff"\ncolor = "#000"\n', "a", "color", "#123")
+        self.assertEqual(tomllib.loads(text)["a"], {"color": "#123"})
+        self.assertIn('# color = "#fff"\n', text)
+
+    def test_insert_after_a_header_without_trailing_newline(self):
+        text = set_key("[a]", "a", "k", 1)
+        self.assertEqual(text, "[a]\nk = 1\n")
+        self.assertEqual(tomllib.loads(text)["a"], {"k": 1})
 
     def test_missing_table(self):
         with self.assertRaises(KeyError):
