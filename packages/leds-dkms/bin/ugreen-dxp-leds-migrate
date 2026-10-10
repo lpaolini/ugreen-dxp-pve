@@ -1,0 +1,10 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MIT
+import sys
+
+sys.dont_write_bytecode = True  # never leave .pyc files in the packaged library
+sys.path.insert(0, "/usr/lib/ugreen-dxp-pve-leds")
+
+from ugreen_leds.migrate import main  # noqa: E402
+
+sys.exit(main())
