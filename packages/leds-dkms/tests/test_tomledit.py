@@ -1,7 +1,7 @@
 import tomllib
 import unittest
 
-from ugreen_leds.tomledit import set_key, toml_value
+from ugreen_leds.tomledit import add_missing_tables, set_key, toml_value
 
 TEXT = """# top comment
 # vmid = 100
@@ -83,3 +83,37 @@ class SetKeyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+TEMPLATE = """# header
+debug = false
+
+[a]
+x = 1
+
+# About b.
+# Second line.
+[b]
+y = 2
+
+[c]
+z = 3
+"""
+
+
+class AddMissingTablesTest(unittest.TestCase):
+    def test_appends_missing_tables_with_their_comments(self):
+        text, added = add_missing_tables("debug = true\n\n[a]\nx = 5\n\n[c]\nz = 6\n", TEMPLATE)
+        self.assertEqual(added, ["b"])
+        self.assertTrue(text.endswith("\n\n# About b.\n# Second line.\n[b]\ny = 2\n"))
+        self.assertEqual(tomllib.loads(text), {"debug": True, "a": {"x": 5}, "c": {"z": 6},
+                                               "b": {"y": 2}})
+
+    def test_nothing_missing(self):
+        text, added = add_missing_tables(TEMPLATE, TEMPLATE)
+        self.assertEqual((text, added), (TEMPLATE, []))
+
+    def test_text_without_trailing_newline(self):
+        text, added = add_missing_tables("[a]\nx = 1\n[b]\ny = 1\n[c]", "[a]\n[b]\n[c]\n[d]\nw = 0\n")
+        self.assertEqual(added, ["d"])
+        self.assertEqual(tomllib.loads(text)["d"], {"w": 0})

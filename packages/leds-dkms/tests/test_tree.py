@@ -3,10 +3,15 @@ import tempfile
 import unittest
 
 from ugreen_leds.contribution import Look
-from ugreen_leds.tree import clear, producer_dir, producer_dirs, publish, runtime_dir, scan
+from ugreen_leds.tree import clear, producer_dir, producer_dirs, publish, runtime_dir, runtime_dirs, scan
 
 
 class TreeTest(unittest.TestCase):
+    def test_runtime_dirs(self):
+        self.assertEqual(runtime_dirs({"RUNTIME_DIRECTORY": "/run/a:/run/b"}), ["/run/a", "/run/b"])
+        self.assertEqual(runtime_dirs({"RUNTIME_DIRECTORY": ""}), [])
+        self.assertEqual(runtime_dirs({}), [])
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

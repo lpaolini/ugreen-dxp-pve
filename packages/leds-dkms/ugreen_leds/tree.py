@@ -46,9 +46,15 @@ def scan(run_root):
     return result
 
 
+def runtime_dirs(environ=os.environ):
+    """The calling unit's systemd RuntimeDirectory entries ([] outside systemd)."""
+    return [path for path in environ.get("RUNTIME_DIRECTORY", "").split(":") if path]
+
+
 def runtime_dir(environ=os.environ):
-    """The calling unit's systemd RuntimeDirectory (first entry), or None outside systemd."""
-    return environ.get("RUNTIME_DIRECTORY", "").split(":")[0] or None
+    """The calling unit's first systemd RuntimeDirectory, or None outside systemd."""
+    dirs = runtime_dirs(environ)
+    return dirs[0] if dirs else None
 
 
 def producer_dir(run_root=RUN_ROOT, environ=os.environ):

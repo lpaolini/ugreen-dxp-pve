@@ -62,3 +62,38 @@ def set_key(text, table, key, value):
         lines[first - 1] += "\n"
     lines.insert(first, line)
     return "".join(lines)
+
+
+def _table_starts(lines):
+    """{table: index of its first line}, counting the comment lines right above the header."""
+    starts = {}
+    for index, line in enumerate(lines):
+        match = _HEADER.match(line)
+        if match:
+            first = index
+            while first > 0 and lines[first - 1].lstrip().startswith("#"):
+                first -= 1
+            starts[match.group(1).strip()] = first
+    return starts
+
+
+def add_missing_tables(text, template):
+    """Return (text, added): `text` with every table of `template` it lacks appended.
+
+    Each appended table keeps the comment lines right above its header in the
+    template. `added` lists the appended table names in template order.
+    """
+    have = _table_starts(text.splitlines(keepends=True))
+    lines = template.splitlines(keepends=True)
+    starts = _table_starts(lines)
+    firsts = sorted(starts.values())
+    added = []
+    for table, first in starts.items():
+        if table in have:
+            continue
+        end = next((i for i in firsts if i > first), len(lines))
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += "\n" + "".join(lines[first:end]).rstrip("\n") + "\n"
+        added.append(table)
+    return text, added
