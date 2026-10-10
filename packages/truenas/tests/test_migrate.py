@@ -1,4 +1,5 @@
 import contextlib
+import dataclasses
 import io
 import os
 import tempfile
@@ -120,6 +121,55 @@ class MigrateTest(unittest.TestCase):
             rc = main([bad, self.output])
         self.assertEqual(rc, 1)
         self.assertFalse(os.path.exists(self.output))
+
+    def test_swapped_bays_are_carried_over(self):
+        a = "/dev/disk/by-path/pci-0000:00:10.0-ata-1"
+        b = "/dev/disk/by-path/pci-0000:00:10.0-ata-2"
+        rc, out, _ = self.migrate(zfs=f"BAY_1_PATH={b}\nBAY_2_PATH={a}\n")
+        self.assertEqual(rc, 0)
+        bays = load(self.output).zfs.bays
+        self.assertTrue(bays[0].endswith("ata-2"))
+        self.assertTrue(bays[1].endswith("ata-1"))
+        self.assertNotIn("ignored", out)
+
+    def test_unusable_preferred_vmid_falls_back_to_the_other_file(self):
+        rc, out, _ = self.migrate("VMID=105\n", "VMID=abc\n")
+        self.assertEqual(rc, 0)
+        self.assertEqual(load(self.output).vmid, "105")
+        self.assertIn("ignored VMID='abc'", out)
+        self.assertIn("using VMID 105", out)
+
+    def test_flags_are_true_only_for_1(self):
+        rc, _, _ = self.migrate("RESET_PWM_ON_EXIT=yes\n")
+        self.assertEqual(rc, 0)
+        self.assertFalse(load(self.output).fan.reset_pwm_on_exit)
+
+    def test_empty_values_are_unset(self):
+        rc, out, _ = self.migrate("FAN_HWMON_NAME=\nMIN_PWM=\n")
+        self.assertEqual(rc, 0)
+        with open(self.output) as f:
+            self.assertIn("# hwmon_name =", f.read())
+        self.assertEqual(load(self.output).fan.hwmon_name, "")
+        self.assertNotIn("ignored", out)
+
+    def test_no_old_files(self):
+        rc, out, _ = self.migrate()
+        self.assertEqual(rc, 0)
+        self.assertIn("from the template", out)
+
+    def test_shipped_0_9_10_files_migrate_cleanly(self):
+        data = os.path.join(os.path.dirname(__file__), "data")
+        texts = []
+        for name in ("0.9.10-fan.conf", "0.9.10-zfs.conf"):
+            with open(os.path.join(data, name)) as f:
+                texts.append(f.read().replace("# VMID=100", "VMID=104"))
+        rc, out, _ = self.migrate(*texts)
+        self.assertEqual(rc, 0)
+        config = load(self.output)
+        expected = dataclasses.replace(load(TEMPLATE), vmid="104", debug=True)
+        self.assertEqual(config, expected)
+        self.assertEqual(out.strip().splitlines()[:-1], [])
+        self.assertTrue(out.startswith("Created"))
 
     def test_existing_output_is_not_overwritten(self):
         self.write("truenas.toml", "keep")

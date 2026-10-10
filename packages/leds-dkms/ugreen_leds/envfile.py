@@ -11,7 +11,7 @@ def read_env(path):
     ends at a whitespace-then-`#` comment, as in the shell.
     """
     values = {}
-    with open(path) as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:

@@ -30,9 +30,7 @@ def _curve(text):
 
 
 def _flag(text):
-    if text not in ("0", "1"):
-        raise ValueError(f"expected 0 or 1, got {text!r}")
-    return text == "1"
+    return text == "1"  # as the old services: exactly "1" is true
 
 
 FAN_KEYS = {  # old variable -> ([fan] key, converter)
@@ -78,44 +76,50 @@ def convert(template, fan, zfs):
             build(tomllib.loads(candidate))
         except (ConfigError, ValueError, TypeError, KeyError) as e:
             messages.append(f"ignored {name}={value!r}: {e}")
-        else:
-            text = candidate
+            return False
+        text = candidate
+        return True
 
     def put(table, name, key, value, converter):
         try:
             converted = converter(value)
         except ValueError as e:
             messages.append(f"ignored {name}={value!r}: {e}")
-            return
-        apply(name, value, table, key, converted)
+            return False
+        return apply(name, value, table, key, converted)
 
-    vmids = {source: env["VMID"] for source, env in (("fan", fan), ("zfs", zfs))
-             if env.get("VMID")}
-    if vmids:
-        vmid = vmids.get("zfs", vmids.get("fan"))
-        if len(set(vmids.values())) > 1:
-            messages.append(f"VMID differs between the files (fan {vmids['fan']}, "
-                            f"zfs {vmids['zfs']}); using {vmid}")
-        put(None, "VMID", "vmid", vmid, int)
+    vmids = {source: env["VMID"] for source, env in (("zfs", zfs), ("fan", fan))
+             if env.get("VMID")}  # preferred first
+    if len(set(vmids.values())) > 1:
+        messages.append(f"VMID differs between the files (fan {vmids['fan']}, "
+                        f"zfs {vmids['zfs']})")
+    for source, vmid in vmids.items():
+        if put(None, "VMID", "vmid", vmid, int):
+            if len(set(vmids.values())) > 1:
+                messages.append(f"using VMID {vmid} from the {source} file")
+            break
     debug = [env["DEBUG"] for env in (fan, zfs) if "DEBUG" in env]
     if debug:
         apply("DEBUG", ",".join(debug), None, "debug", "1" in debug)
 
     for name, (key, converter) in FAN_KEYS.items():
-        if name in fan:
+        if fan.get(name):
             put("fan", name, key, fan[name], converter)
     for name, (key, converter) in ZFS_KEYS.items():
-        if name in zfs:
+        if zfs.get(name):
             put("zfs", name, key, zfs[name], converter)
     bays = list(tomllib.loads(template)["zfs"]["bays"])
-    for index, name in enumerate(BAY_KEYS):
-        if zfs.get(name):
-            candidate = bays.copy()
-            candidate[index] = zfs[name]
-            before = text
-            apply(name, zfs[name], "zfs", "bays", candidate)
-            if text != before:
-                bays = candidate
+    wanted = {index: zfs[name] for index, name in enumerate(BAY_KEYS) if zfs.get(name)}
+    if wanted:
+        combined = [wanted.get(index, path) for index, path in enumerate(bays)]
+        mark = len(messages)
+        if not apply("BAY_n_PATH", wanted, "zfs", "bays", combined):
+            del messages[mark:]  # retry bay by bay to keep the usable ones
+            for index, path in wanted.items():
+                candidate = bays.copy()
+                candidate[index] = path
+                if apply(BAY_KEYS[index], path, "zfs", "bays", candidate):
+                    bays = candidate
 
     for which, env, known in (("fan", fan, FAN_KEYS), ("zfs", zfs, (*ZFS_KEYS, *BAY_KEYS))):
         for name in env:
@@ -158,5 +162,5 @@ def main(argv=None):
     for message in messages:
         print(message)
     sources = ", ".join(path for path in (args.fan, args.zfs) if path)
-    print(f"Created {args.output} from {sources}")
+    print(f"Created {args.output} from {sources or 'the template'}")
     return 0

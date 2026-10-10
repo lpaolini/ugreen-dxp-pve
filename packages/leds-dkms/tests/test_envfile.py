@@ -24,6 +24,13 @@ class ReadEnvTest(unittest.TestCase):
             self.assertEqual(read_env(path), {
                 "A": "vmbr1", "B": "a#b", "C": "x # y", "D": "x", "E": "1"})
 
+    def test_stray_non_utf8_byte_is_tolerated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "x.conf")
+            with open(path, "wb") as f:
+                f.write(b"# caf\xe9\nVMID=105\n")
+            self.assertEqual(read_env(path), {"VMID": "105"})
+
 
 if __name__ == "__main__":
     unittest.main()

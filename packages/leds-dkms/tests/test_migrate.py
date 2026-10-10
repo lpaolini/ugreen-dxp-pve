@@ -148,13 +148,20 @@ color = "#ff8000"
         self.assertIn("ignored NETDEV_LED_DEVICE", out)
 
     def test_unreadable_legacy_file_is_not_reported_as_read(self):
-        legacy = os.path.join(self.tmp.name, "leds.conf.dpkg-bak")
-        with open(legacy, "wb") as f:
-            f.write(b"\xff\xfe=\n")
+        legacy = os.path.join(self.tmp.name, "leds-is-a-directory")
+        os.mkdir(legacy)
         rc, out, _ = self.migrate("--legacy", legacy)
         self.assertEqual(rc, 0)
         self.assertIn("ignored", out)
         self.assertNotIn("Created", out)
+
+    def test_non_utf8_legacy_file_is_still_read(self):
+        legacy = os.path.join(self.tmp.name, "leds.conf.dpkg-bak")
+        with open(legacy, "wb") as f:
+            f.write(b"# caf\xe9\nI2C_BUS=3\n")
+        rc, _, _ = self.migrate("--legacy", legacy)
+        self.assertEqual(rc, 0)
+        self.assertEqual(load_config(self.config).i2c_bus, 3)
 
     def test_one_bad_override_drops_only_that_key(self):
         self.write(self.config, '[bind]\ni2c_bus = 2\n\n[states.NETDEV]\nlink = "1"\n')
