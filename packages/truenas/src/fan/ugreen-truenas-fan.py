@@ -17,40 +17,24 @@ from dataclasses import dataclass
 
 sys.dont_write_bytecode = True  # never leave .pyc files in the packaged library
 sys.path.append("/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
+sys.path.append("/usr/lib/ugreen-dxp-pve-truenas")
 from ugreen_leds.tree import clear, publish, runtime_dir  # noqa: E402
+from ugreen_truenas.config import CONFIG_PATH, ConfigError, load  # noqa: E402
 
-VMID = os.environ.get("VMID", "").strip()
 TAG = "ugreen-truenas-fan"
-DEBUG = os.environ.get("DEBUG", "1") == "1"
-
-# DXP4800-class systems expose the wired fan channels as pwm2/pwm3 through it87.
-# Keep the path configurable because hwmon numbering can change after boot.
-FAN_HWMON_NAME = os.environ.get("FAN_HWMON_NAME", "").strip()
-FAN_HWMON_REGEX = os.environ.get("FAN_HWMON_REGEX", r"^it[0-9]+$").strip()
-FAN_PWM_CHANNEL = os.environ.get("FAN_PWM_CHANNEL", "3").strip()
-AUTO_DISCOVER_HWMON = os.environ.get("AUTO_DISCOVER_HWMON", "1") == "1"
-FAN_PWM_PATH = os.environ.get("FAN_PWM_PATH", "").strip()
-FAN_PWM_ENABLE_PATH = os.environ.get("FAN_PWM_ENABLE_PATH", "").strip()
-FAN_INPUT_PATH = os.environ.get("FAN_INPUT_PATH", "").strip()
-CPU_TEMP_PATH = os.environ.get("CPU_TEMP_PATH", "").strip()
-
-# Comma-separated temp:pwm points. Temperatures are Celsius; PWM is 0..255.
-# The HDD curve is intentionally conservative and fails to MAX_PWM.
-HDD_FAN_CURVE = os.environ.get("HDD_FAN_CURVE", "30:90,35:120,40:175,43:220,45:255")
-CPU_FAN_CURVE = os.environ.get("CPU_FAN_CURVE", "45:90,55:115,65:150,75:190,85:225,95:255")
-MIN_PWM = int(os.environ.get("MIN_PWM", "90"))
-MAX_PWM = int(os.environ.get("MAX_PWM", "255"))
-FAILSAFE_PWM = int(os.environ.get("FAILSAFE_PWM", str(MAX_PWM)))
-MANUAL_PWM_ENABLE_VALUE = os.environ.get("MANUAL_PWM_ENABLE_VALUE", "1")
-AUTO_PWM_ENABLE_VALUE = os.environ.get("AUTO_PWM_ENABLE_VALUE", "2")
-POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "30"))
-RESET_PWM_ON_EXIT = os.environ.get("RESET_PWM_ON_EXIT", "1") == "1"
-# State published for the power LED while the fan cannot be controlled.
-POWER_LED_FAULT_STATE = "FAULT"
-
-# Limit temperature extraction to disk-like sensors so CPU/package temps do not
-# spin the storage fan. Override if your TrueNAS sensor chip names differ.
-TEMP_CHIP_REGEX = os.environ.get("TEMP_CHIP_REGEX", r"(?i)(drivetemp|nvme|ata|scsi|sas|sat|disk|hdd|ssd)")
+# Settings, set from the configuration by configure().
+VMID = ""
+DEBUG = False
+FAN_HWMON_NAME = FAN_HWMON_REGEX = FAN_PWM_CHANNEL = ""
+AUTO_DISCOVER_HWMON = False
+FAN_PWM_PATH = FAN_PWM_ENABLE_PATH = FAN_INPUT_PATH = CPU_TEMP_PATH = ""
+HDD_CURVE = CPU_CURVE = ()  # ((temperature, pwm), ...) sorted by temperature
+MIN_PWM = MAX_PWM = FAILSAFE_PWM = 255
+MANUAL_PWM_ENABLE_VALUE = AUTO_PWM_ENABLE_VALUE = ""
+POLL_INTERVAL = 30
+RESET_PWM_ON_EXIT = True
+TEMP_CHIP_REGEX = ""
+POWER_LED_FAULT_LOOK = None  # published for the power LED while the fan cannot be controlled
 
 syslog.openlog(TAG)
 STOP_REQUESTED = threading.Event()
@@ -75,10 +59,41 @@ def dbg(msg):
         print(f"[{TAG}][debug] {msg}", file=sys.stderr)
 
 
+def configure(config):
+    """Apply a loaded configuration to the module settings."""
+    global VMID, DEBUG, FAN_HWMON_NAME, FAN_HWMON_REGEX, FAN_PWM_CHANNEL, AUTO_DISCOVER_HWMON
+    global FAN_PWM_PATH, FAN_PWM_ENABLE_PATH, FAN_INPUT_PATH, CPU_TEMP_PATH
+    global HDD_CURVE, CPU_CURVE, MIN_PWM, MAX_PWM, FAILSAFE_PWM
+    global MANUAL_PWM_ENABLE_VALUE, AUTO_PWM_ENABLE_VALUE, POLL_INTERVAL, RESET_PWM_ON_EXIT
+    global TEMP_CHIP_REGEX, POWER_LED_FAULT_LOOK
+    fan = config.fan
+    VMID = config.vmid or ""
+    DEBUG = config.debug
+    FAN_HWMON_NAME = fan.hwmon_name
+    FAN_HWMON_REGEX = fan.hwmon_regex
+    FAN_PWM_CHANNEL = str(fan.pwm_channel)
+    AUTO_DISCOVER_HWMON = fan.auto_discover_hwmon
+    FAN_PWM_PATH = fan.pwm_path
+    FAN_PWM_ENABLE_PATH = fan.pwm_enable_path
+    FAN_INPUT_PATH = fan.input_path
+    CPU_TEMP_PATH = fan.cpu_temp_path
+    HDD_CURVE = fan.hdd_curve
+    CPU_CURVE = fan.cpu_curve
+    MIN_PWM = fan.min_pwm
+    MAX_PWM = fan.max_pwm
+    FAILSAFE_PWM = fan.failsafe_pwm
+    MANUAL_PWM_ENABLE_VALUE = str(fan.manual_pwm_enable_value)
+    AUTO_PWM_ENABLE_VALUE = str(fan.auto_pwm_enable_value)
+    POLL_INTERVAL = fan.poll_interval
+    RESET_PWM_ON_EXIT = fan.reset_pwm_on_exit
+    TEMP_CHIP_REGEX = fan.temp_chip_regex
+    POWER_LED_FAULT_LOOK = config.power["FAULT"]
+
+
 def require_vmid():
     if VMID:
         return True
-    log("VMID is not configured; set VMID in /etc/ugreen-dxp-pve-truenas-fan.conf")
+    log("vmid is not configured; set vmid in /etc/ugreen-dxp-pve-truenas.toml")
     return False
 
 
@@ -110,7 +125,7 @@ def set_power_led_fault(active):
         return False
     try:
         if active:
-            publish(directory, "power", POWER_LED_FAULT_STATE)
+            publish(directory, "power", POWER_LED_FAULT_LOOK)
         else:
             clear(directory, "power")
     except OSError as e:
@@ -137,14 +152,14 @@ def set_fan_pwm(pwm):
     dbg(f"Fan PWM -> {pwm}")
 
     if not FAN_PWM_PATH:
-        log("FAN_PWM_PATH is not configured and hwmon auto-discovery did not resolve it")
+        log("[fan] pwm_path is not set and hwmon auto-discovery did not resolve it")
         return False
     if not os.path.exists(FAN_PWM_PATH):
         log(f"PWM path missing: {FAN_PWM_PATH}")
         return False
 
     ok = True
-    hint = "check FAN_HWMON_NAME/FAN_PWM_CHANNEL or set FAN_PWM_PATH manually"
+    hint = "check [fan] hwmon_name/pwm_channel or set pwm_path"
 
     if FAN_PWM_ENABLE_PATH and os.path.exists(FAN_PWM_ENABLE_PATH):
         ok = _write(FAN_PWM_ENABLE_PATH, MANUAL_PWM_ENABLE_VALUE, hint) and ok
@@ -152,7 +167,7 @@ def set_fan_pwm(pwm):
         log(f"PWM enable path missing: {FAN_PWM_ENABLE_PATH}")
         ok = False
     else:
-        dbg("FAN_PWM_ENABLE_PATH is empty, skipping manual-mode write")
+        dbg("[fan] pwm_enable_path is empty, skipping manual-mode write")
 
     ok = _write(FAN_PWM_PATH, pwm, hint) and ok
     rpm = read_int(FAN_INPUT_PATH)
@@ -163,13 +178,13 @@ def set_fan_pwm(pwm):
 
 def set_fan_auto():
     if not FAN_PWM_ENABLE_PATH:
-        log("FAN_PWM_ENABLE_PATH is not configured and hwmon auto-discovery did not resolve it")
+        log("[fan] pwm_enable_path is not set and hwmon auto-discovery did not resolve it")
         return False
     if not os.path.exists(FAN_PWM_ENABLE_PATH):
         log(f"PWM enable path missing: {FAN_PWM_ENABLE_PATH}")
         return False
 
-    hint = "check FAN_HWMON_NAME/FAN_PWM_CHANNEL or set FAN_PWM_ENABLE_PATH manually"
+    hint = "check [fan] hwmon_name/pwm_channel or set pwm_enable_path"
     ok = _write(FAN_PWM_ENABLE_PATH, AUTO_PWM_ENABLE_VALUE, hint)
     if ok:
         log(f"fan pwm control reset to auto: {FAN_PWM_ENABLE_PATH}={AUTO_PWM_ENABLE_VALUE}")
@@ -302,25 +317,6 @@ def resolve_host_hwmon_paths():
     )
 
 
-def parse_curve(name, spec):
-    points = []
-    for item in spec.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        try:
-            temp, pwm = item.split(":", 1)
-            points.append((float(temp), int(pwm)))
-        except ValueError as e:
-            raise ValueError(f"invalid {name} point {item!r}; expected temp:pwm") from e
-
-    if len(points) < 2:
-        raise ValueError(f"{name} must contain at least two temp:pwm points")
-
-    points.sort(key=lambda p: p[0])
-    return [(t, int(clamp(p, 0, 255))) for t, p in points]
-
-
 def pwm_for_temp(temp_c, curve):
     if temp_c <= curve[0][0]:
         return int(clamp(curve[0][1], MIN_PWM, MAX_PWM))
@@ -406,14 +402,6 @@ def describe_readings(readings):
 
 
 def control_once():
-    try:
-        hdd_curve = parse_curve("HDD_FAN_CURVE", HDD_FAN_CURVE)
-        cpu_curve = parse_curve("CPU_FAN_CURVE", CPU_FAN_CURVE)
-    except ValueError as e:
-        log(str(e))
-        apply_fan_pwm(FAILSAFE_PWM)
-        return False
-
     cpu_temp = read_temp_c(CPU_TEMP_PATH)
     if cpu_temp is None:
         log(f"CPU temperature read failed: {CPU_TEMP_PATH}")
@@ -427,13 +415,13 @@ def control_once():
 
     readings = collect_disk_temps(sensors_obj)
     if not readings:
-        log(f"no disk temperature readings matched TEMP_CHIP_REGEX={TEMP_CHIP_REGEX!r}")
+        log(f"no disk temperature readings matched temp_chip_regex={TEMP_CHIP_REGEX!r}")
         apply_fan_pwm(FAILSAFE_PWM)
         return False
 
     hottest = max(readings, key=lambda r: r.temp_c)
-    hdd_pwm = pwm_for_temp(hottest.temp_c, hdd_curve)
-    cpu_pwm = pwm_for_temp(cpu_temp, cpu_curve)
+    hdd_pwm = pwm_for_temp(hottest.temp_c, HDD_CURVE)
+    cpu_pwm = pwm_for_temp(cpu_temp, CPU_CURVE)
     pwm = max(hdd_pwm, cpu_pwm)
     dbg(f"Disk temperatures: {describe_readings(readings)}")
     log(
@@ -466,7 +454,14 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--start", action="store_true", help="run continuously instead of polling once")
     mode.add_argument("--stop", action="store_true", help="reset the fan PWM controller to automatic mode and exit")
+    parser.add_argument("--config", default=CONFIG_PATH, help="configuration file (default: %(default)s)")
     args = parser.parse_args()
+
+    try:
+        configure(load(args.config))
+    except ConfigError as e:
+        log(f"invalid configuration: {e}")
+        sys.exit(1)
 
     resolve_host_hwmon_paths()
 
