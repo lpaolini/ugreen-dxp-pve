@@ -5,6 +5,7 @@ Run by postinst: builds the config from the old .conf files when it does not exi
 and appends tables a newer template added when it does.
 """
 import argparse
+import contextlib
 import os
 import sys
 import tomllib
@@ -148,10 +149,17 @@ def complete(template_path, path):
         print(f"cannot update {path}: {e}", file=sys.stderr)
         return 1
     tmp = f"{path}.tmp"
-    with open(tmp, "w") as f:
-        f.write(text)
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, path)
+    try:
+        mode = os.stat(path).st_mode & 0o777
+        with open(tmp, "w") as f:
+            f.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"cannot update {path}: {e}", file=sys.stderr)
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        return 1
     print(f"Added {', '.join(f'[{table}]' for table in added)} to {path}")
     return 0
 

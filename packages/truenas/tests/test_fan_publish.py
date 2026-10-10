@@ -138,8 +138,8 @@ class TemperatureLookTest(unittest.TestCase):
         self.assertIsNone(fan.POWER_LED_TEMP_LEVEL)
         self.assertEqual(os.listdir(self.fan_dir), [])
 
-    def poll(self, sensors):
-        with mock.patch.object(fan, "read_temp_c", return_value=40.0), \
+    def poll(self, sensors, cpu_temp=40.0):
+        with mock.patch.object(fan, "read_temp_c", return_value=cpu_temp), \
                 mock.patch.object(fan, "fetch_guest_sensors", return_value=sensors), \
                 mock.patch.object(fan, "apply_fan_pwm", return_value=True), \
                 mock.patch.object(fan, "log"):
@@ -156,6 +156,19 @@ class TemperatureLookTest(unittest.TestCase):
         self.poll({"drivetemp-scsi-0-0": {"temp1": {"temp1_input": 44.0}}})
         self.assertEqual(self.temp_look().state, "TEMP_ALERT")
         self.poll(None)  # TrueNAS could not be queried
+        self.assertIsNone(self.temp_look())
+
+    def test_unreadable_cpu_temperature_withdraws_the_look(self):
+        hot = {"drivetemp-scsi-0-0": {"temp1": {"temp1_input": 44.0}}}
+        self.poll(hot)
+        self.assertEqual(self.temp_look().state, "TEMP_ALERT")
+        self.poll(hot, cpu_temp=None)
+        self.assertIsNone(self.temp_look())
+
+    def test_no_matching_sensor_withdraws_the_look(self):
+        self.poll({"drivetemp-scsi-0-0": {"temp1": {"temp1_input": 44.0}}})
+        self.assertEqual(self.temp_look().state, "TEMP_ALERT")
+        self.poll({"coretemp-isa-0000": {"Core 0": {"temp2_input": 50.0}}})
         self.assertIsNone(self.temp_look())
 
 

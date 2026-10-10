@@ -4,6 +4,7 @@ import io
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from tests.helpers import TEMPLATE
 from ugreen_truenas.config import load
@@ -188,6 +189,25 @@ class MigrateTest(unittest.TestCase):
         self.assertEqual(config.vmid, "105")
         self.assertEqual(set(config.power), {"FAULT", "TEMP_ALERT", "TEMP_WARNING"})
         self.assertIn("Added [power.TEMP_ALERT], [power.TEMP_WARNING]", out)
+
+    def test_completing_keeps_the_file_mode(self):
+        self.write("truenas.toml", self.config_without_temperature_looks())
+        os.chmod(self.output, 0o600)
+        rc, _, _ = self.migrate()
+        self.assertEqual(rc, 0)
+        self.assertEqual(os.stat(self.output).st_mode & 0o777, 0o600)
+
+    def test_failed_write_leaves_the_config_alone(self):
+        text = self.config_without_temperature_looks()
+        self.write("truenas.toml", text)
+        with mock.patch("ugreen_truenas.migrate.os.replace", side_effect=OSError("disk full")):
+            rc, out, err = self.migrate()
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
+        self.assertIn(f"cannot update {self.output}: disk full", err)
+        self.assertEqual(os.listdir(self.tmp.name), ["truenas.toml"])
+        with open(self.output) as f:
+            self.assertEqual(f.read(), text)
 
     def test_complete_config_is_left_alone(self):
         with open(TEMPLATE) as f:
