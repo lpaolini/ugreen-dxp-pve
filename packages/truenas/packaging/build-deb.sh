@@ -101,6 +101,9 @@ if [ "${1:-}" = "configure" ] && [ ! -e "$CONF" ]; then
       fi
     done
   else
+    if [ -n "$fan$zfs" ]; then
+      echo "Could not migrate the old settings; they are kept in $fan $zfs. Set vmid in $CONF."
+    fi
     install -m 0644 "$TEMPLATE" "$CONF"
   fi
 fi
@@ -137,7 +140,9 @@ dpkg-maintscript-helper rm_conffile /etc/ugreen-dxp-pve-truenas-fan.conf -- "$@"
 dpkg-maintscript-helper rm_conffile /etc/ugreen-dxp-pve-truenas-zfs.conf -- "$@"
 
 if [ "${1:-}" = "purge" ]; then
-  rm -f /etc/ugreen-dxp-pve-truenas.toml
+  rm -f /etc/ugreen-dxp-pve-truenas.toml \
+    /etc/ugreen-dxp-pve-truenas-fan.conf.migrated \
+    /etc/ugreen-dxp-pve-truenas-zfs.conf.migrated
 fi
 
 if command -v systemctl >/dev/null 2>&1; then

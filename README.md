@@ -123,13 +123,15 @@ Development versions look like `0.9.10+dev5.gabc1234` (5 commits after
 stable, delete `ugreen-dxp-pve-dev.list`, run `apt update`, and reinstall the
 stable versions explicitly (apt never downgrades on its own), for example
 `apt install ugreen-dxp-pve-truenas=0.9.10 ugreen-dxp-pve-leds-dkms=0.9.10 ugreen-dxp-pve-it87-dkms=0.9.10`.
+The stable 0.9.10 package reads the old `.conf` files again, so restore your
+settings from the `*.conf.migrated` files (or set `VMID` again).
 
 ### Configuration files
 
 - `/etc/ugreen-dxp-pve-leds.toml` (LED daemon: network LED, power LED looks)
 - `/etc/ugreen-dxp-pve-truenas.toml` (`vmid` needs to be set; fan, ZFS and disk LED looks)
 
-After setting the `VMID`, restart the services:
+After setting `vmid` in `/etc/ugreen-dxp-pve-truenas.toml`, restart the services:
 
 ```bash
 systemctl restart ugreen-truenas-zfs.service ugreen-truenas-fan.service

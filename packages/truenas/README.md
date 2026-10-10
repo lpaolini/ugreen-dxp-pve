@@ -24,11 +24,11 @@ There are two services:
   PWM value from the configured disk and CPU fan curves, and writes that value to
   the UGREEN fan PWM sysfs path on the Proxmox host. If temperature collection
   fails, it uses the configured failsafe PWM. If the fan PWM path cannot be
-  controlled, it publishes the `FAULT` state for the power LED until a later
+  controlled, it publishes a blinking red look for the power LED until a later
   PWM write succeeds.
 - `ugreen-truenas-zfs.service` polls `lsblk` and `zpool status -pj` inside the
   TrueNAS VM, maps the VM's disks back to the four physical UGREEN bays, and
-  publishes a state for LEDs `disk1` through `disk4` to show ZFS
+  publishes a look for LEDs `disk1` through `disk4` to show ZFS
   health, spindown/standby state, missing disks, and resilvering for any pool
   associated with those bays.
 
@@ -51,7 +51,8 @@ Both services poll every 30 seconds. Their configuration lives in one file,
   table below).
 
 Upgrading from the two `.conf` files of earlier releases creates this file
-from them; the old files are kept as `*.conf.migrated`.
+from them; edited old files are kept as `*.conf.migrated` (dpkg deletes
+unedited ones).
 
 ## Requirements
 
