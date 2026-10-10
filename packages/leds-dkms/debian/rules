@@ -13,9 +13,9 @@ override_dh_install:
 	dh_install ugreen-dxp-leds.h usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
 	dh_install Makefile usr/src/led-ugreen-$(DEB_VERSION_UPSTREAM)/
 	dh_install ugreen_leds/*.py $(LIBDIR)/ugreen_leds/
-	dh_install bin/ugreen-dxp-leds-daemon bin/ugreen-dxp-leds-bind $(LIBEXECDIR)/
+	dh_install bin/ugreen-dxp-leds-daemon bin/ugreen-dxp-leds-bind bin/ugreen-dxp-leds-migrate $(LIBEXECDIR)/
 	dh_install bin/ugreen-dxp-led usr/bin/
-	dh_install data/leds.toml data/ugreen-dxp-pve-leds.toml usr/share/ugreen-dxp-pve-leds/
+	dh_install data/ugreen-dxp-pve-leds.toml usr/share/ugreen-dxp-pve-leds/
 	dh_install debian/led-ugreen.conf etc/modules-load.d/
 
 override_dh_installsystemd:

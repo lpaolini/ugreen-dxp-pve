@@ -1,19 +1,22 @@
 ugreen-dxp-pve-leds-dkms (0.10.0) stable; urgency=medium
 
   * Make ugreen-dxp-pve-leds.service the single writer to the front-panel
-    LEDs. Other services publish named states as files under
-    /run/ugreen-dxp-pve/<producer>/<led>; the daemon picks the highest
-    priority state per LED and renders it.
-  * Move LED looks to /usr/share/ugreen-dxp-pve-leds/leds.toml with local
-    overrides in /etc/ugreen-dxp-pve-leds.toml (replaces
-    /etc/ugreen-dxp-pve-leds.conf; I2C_BUS is migrated).
+    LEDs. Other services publish contributions as files under
+    /run/ugreen-dxp-leds/<producer>/<led>: one line with a priority, a
+    colour, an optional effect and an optional state label. The daemon
+    shows the lowest priority contribution on each LED and drives the
+    network LED itself.
+  * Configure the daemon in /etc/ugreen-dxp-pve-leds.toml: I2C bus, network
+    LED, shutdown colour and named power LED looks. It replaces
+    /etc/ugreen-dxp-pve-leds.conf; I2C_BUS and NETDEV_LED_DEVICE are
+    migrated.
   * Split controller binding into ugreen-dxp-pve-leds-bind.service, which
     also unbinds on stop.
-  * Add ugreen-dxp-led to publish, clear and inspect LED states.
-  * Disk LEDs now default to OFF (previously steady purple) until a service
-    publishes a state for them.
+  * Add ugreen-dxp-led to publish, clear and inspect contributions.
+  * Disk LEDs now default to off (previously steady purple) until a service
+    publishes a look for them.
   * Stopping ugreen-dxp-pve-leds-bind.service (shutdown, reboot, package
-    removal) resets every LED to steady white (state SHUTDOWN), switches it
+    removal) sets every LED to the [shutdown] colour (white), switches it
     off and releases the controller: the panel is dark while the NAS is off
     and the controller's own startup sequence is white again.
   * Binding retries for up to two minutes when the controller does not
@@ -21,7 +24,7 @@ ugreen-dxp-pve-leds-dkms (0.10.0) stable; urgency=medium
   * Remove configure-led-ugreen, power-led-monitor-ugreen, power-led-ugreen
     and probe-led-ugreen.
 
- -- Luca Paolini <lookap@gmail.com>  Tue, 06 Oct 2026 12:00:00 +0200
+ -- Luca Paolini <lookap@gmail.com>  Sat, 10 Oct 2026 12:00:00 +0200
 
 ugreen-dxp-pve-leds-dkms (0.3.1) stable; urgency=medium
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Drive UGREEN DXP front-panel LEDs from published states
+Description=Drive UGREEN DXP front-panel LEDs from published contributions
 Documentation=https://github.com/lpaolini/ugreen-dxp
 # Start even if binding fails (LEDs are painted once they appear), but follow
 # the bind unit when it is stopped or restarted.
@@ -11,7 +11,6 @@ After=ugreen-dxp-pve-leds-bind.service systemd-tmpfiles-setup.service
 Type=simple
 ExecStart=/usr/libexec/ugreen-dxp-pve-leds/ugreen-dxp-leds-daemon
 ExecReload=/bin/kill -HUP $MAINPID
-RuntimeDirectory=ugreen-dxp-pve-leds
 Restart=on-failure
 RestartSec=5s
 

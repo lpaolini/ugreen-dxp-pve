@@ -3,29 +3,34 @@ set -e
 
 CONF=/etc/ugreen-dxp-pve-leds.toml
 TEMPLATE=/usr/share/ugreen-dxp-pve-leds/ugreen-dxp-pve-leds.toml
-LEGACY_CONF=/etc/ugreen-dxp-pve-leds.conf.dpkg-bak
+MIGRATE=/usr/libexec/ugreen-dxp-pve-leds/ugreen-dxp-leds-migrate
+# The 0.9.10 config if the admin edited it. dpkg-maintscript-helper (run in
+# #DEBHELPER# below) renames it from .dpkg-backup to .dpkg-bak.
+LEGACY=/etc/ugreen-dxp-pve-leds.conf.dpkg-backup
+[ -e "$LEGACY" ] || LEGACY=/etc/ugreen-dxp-pve-leds.conf.dpkg-bak
 
-#DEBHELPER#
-
+# Before #DEBHELPER#, which starts or restarts the daemon: it must find the
+# configuration in the current format.
 if [ "$1" = "configure" ]; then
-    if [ ! -e "$CONF" ]; then
+    if ! "$MIGRATE" "$CONF" "$TEMPLATE" --legacy "$LEGACY"; then
+        if [ -e "$CONF" ]; then
+            mv "$CONF" "$CONF.migrated"
+            echo "Could not convert $CONF: installed the default one; the previous file is $CONF.migrated"
+        fi
         install -m 0644 "$TEMPLATE" "$CONF"
     fi
 
     if [ -n "$2" ] && dpkg --compare-versions "$2" lt 0.10.0~; then
         # The old bind unit was named after the package.
         deb-systemd-helper purge ugreen-dxp-pve-leds-dkms.service >/dev/null || true
-
-        if [ -f "$LEGACY_CONF" ]; then
-            bus="$(sed -n 's/^[[:space:]]*I2C_BUS=["'\'']\{0,1\}\([0-9][0-9]*\).*/\1/p' "$LEGACY_CONF" | tail -n 1)"
-            if [ -n "$bus" ] && ! grep -q '^[[:space:]]*i2c_bus[[:space:]]*=' "$CONF"; then
-                printf '\n[bind]\ni2c_bus = %s\n' "$bus" >> "$CONF"
-                echo "Migrated I2C_BUS=$bus from $LEGACY_CONF to $CONF"
-            fi
-            echo "LED colours and triggers are now configured in $CONF;"
-            echo "review $LEGACY_CONF for customisations to carry over."
-        fi
     fi
+fi
+
+#DEBHELPER#
+
+if [ "$1" = "configure" ]; then
+    # The daemon's old RuntimeDirectory; its status file is in /run/ugreen-dxp-leds now.
+    rm -rf /run/ugreen-dxp-pve-leds
 fi
 
 exit 0
