@@ -91,20 +91,25 @@ old_conf() {
   done
 }
 
-if [ "${1:-}" = "configure" ] && [ ! -e "$CONF" ]; then
-  fan="$(old_conf /etc/ugreen-dxp-pve-truenas-fan.conf)"
-  zfs="$(old_conf /etc/ugreen-dxp-pve-truenas-zfs.conf)"
-  if [ -n "$fan$zfs" ] && "$MIGRATE" ${fan:+--fan "$fan"} ${zfs:+--zfs "$zfs"} "$TEMPLATE" "$CONF"; then
-    for old in "$fan" "$zfs"; do
-      if [ -n "$old" ]; then
-        mv "$old" "${old%.dpkg-bak}.migrated"
-      fi
-    done
+if [ "${1:-}" = "configure" ]; then
+  if [ -e "$CONF" ]; then
+    # Add the tables a newer release introduced; settings are never changed.
+    "$MIGRATE" "$TEMPLATE" "$CONF" || echo "Could not update $CONF; compare it with $TEMPLATE."
   else
-    if [ -n "$fan$zfs" ]; then
-      echo "Could not migrate the old settings; they are kept in $fan $zfs. Set vmid in $CONF."
+    fan="$(old_conf /etc/ugreen-dxp-pve-truenas-fan.conf)"
+    zfs="$(old_conf /etc/ugreen-dxp-pve-truenas-zfs.conf)"
+    if [ -n "$fan$zfs" ] && "$MIGRATE" ${fan:+--fan "$fan"} ${zfs:+--zfs "$zfs"} "$TEMPLATE" "$CONF"; then
+      for old in "$fan" "$zfs"; do
+        if [ -n "$old" ]; then
+          mv "$old" "${old%.dpkg-bak}.migrated"
+        fi
+      done
+    else
+      if [ -n "$fan$zfs" ]; then
+        echo "Could not migrate the old settings; they are kept in $fan $zfs. Set vmid in $CONF."
+      fi
+      install -m 0644 "$TEMPLATE" "$CONF"
     fi
-    install -m 0644 "$TEMPLATE" "$CONF"
   fi
 fi
 

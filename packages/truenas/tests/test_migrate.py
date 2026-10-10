@@ -171,9 +171,37 @@ class MigrateTest(unittest.TestCase):
         self.assertEqual(out.strip().splitlines()[:-1], [])
         self.assertTrue(out.startswith("Created"))
 
-    def test_existing_output_is_not_overwritten(self):
+    def config_without_temperature_looks(self):
+        """The template as the first TOML release shipped it: no temperature looks."""
+        with open(TEMPLATE) as f:
+            text = f.read()
+        start = text.index("# The power LED while the hottest disk is at or above [fan] temp_alert.")
+        end = text.index("# Disk LEDs, most severe first.")
+        return text[:start] + text[end:]
+
+    def test_existing_config_gets_the_missing_tables(self):
+        self.write("truenas.toml", self.config_without_temperature_looks().replace(
+            "vmid = 100", "vmid = 105"))
+        rc, out, _ = self.migrate()
+        self.assertEqual(rc, 0)
+        config = load(self.output)
+        self.assertEqual(config.vmid, "105")
+        self.assertEqual(set(config.power), {"FAULT", "TEMP_ALERT", "TEMP_WARNING"})
+        self.assertIn("Added [power.TEMP_ALERT], [power.TEMP_WARNING]", out)
+
+    def test_complete_config_is_left_alone(self):
+        with open(TEMPLATE) as f:
+            self.write("truenas.toml", f.read())
+        before = os.stat(self.output).st_mtime_ns
+        rc, out, _ = self.migrate()
+        self.assertEqual((rc, out), (0, ""))
+        self.assertEqual(os.stat(self.output).st_mtime_ns, before)
+
+    def test_invalid_existing_config_is_left_alone(self):
         self.write("truenas.toml", "keep")
-        self.assertEqual(self.migrate(zfs="VMID=103\n")[0], 1)
+        rc, _, err = self.migrate(zfs="VMID=103\n")
+        self.assertEqual(rc, 1)
+        self.assertIn("cannot update", err)
         with open(self.output) as f:
             self.assertEqual(f.read(), "keep")
 

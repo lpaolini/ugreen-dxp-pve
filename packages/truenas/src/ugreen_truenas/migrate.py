@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 """ugreen-dxp-pve-truenas-migrate: build the TOML config from the old .conf files.
 
-Run by postinst when /etc/ugreen-dxp-pve-truenas.toml does not exist yet.
+Run by postinst: builds the config from the old .conf files when it does not exist yet,
+and appends tables a newer template added when it does.
 """
 import argparse
 import os
@@ -9,7 +10,7 @@ import sys
 import tomllib
 
 from ugreen_leds.envfile import read_env
-from ugreen_leds.tomledit import set_key
+from ugreen_leds.tomledit import add_missing_tables, set_key
 
 from .config import ConfigError, build
 
@@ -128,19 +129,45 @@ def convert(template, fan, zfs):
     return text, messages
 
 
+def complete(template_path, path):
+    """Append the tables of the template that the existing config at `path` lacks."""
+    try:
+        with open(template_path) as f:
+            template = f.read()
+        with open(path) as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"cannot update {path}: {e}", file=sys.stderr)
+        return 1
+    text, added = add_missing_tables(text, template)
+    if not added:
+        return 0
+    try:
+        build(tomllib.loads(text))
+    except (ConfigError, ValueError) as e:
+        print(f"cannot update {path}: {e}", file=sys.stderr)
+        return 1
+    tmp = f"{path}.tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+    print(f"Added {', '.join(f'[{table}]' for table in added)} to {path}")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="ugreen-dxp-pve-truenas-migrate",
-        description="Build the TrueNAS helper configuration from the old .conf files")
+        description="Create or complete the TrueNAS helper configuration")
     parser.add_argument("--fan", help="old ugreen-dxp-pve-truenas-fan.conf")
     parser.add_argument("--zfs", help="old ugreen-dxp-pve-truenas-zfs.conf")
     parser.add_argument("template")
     parser.add_argument("output")
     args = parser.parse_args(argv)
 
-    if os.path.exists(args.output):
-        print(f"migration failed: {args.output} already exists", file=sys.stderr)
-        return 1
+    if os.path.exists(args.output):  # never overwritten; old files are not read again
+        return complete(args.template, args.output)
     try:
         fan = read_env(args.fan) if args.fan else {}
         zfs = read_env(args.zfs) if args.zfs else {}
