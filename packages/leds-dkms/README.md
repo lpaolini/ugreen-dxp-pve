@@ -12,7 +12,7 @@ This repository is based on a fork of
 
 It keeps the `led-ugreen` DKMS kernel module, reorganized as a standard Debian
 package source tree, and adds a small Python LED daemon (`ugreen_leds/`) that
-renders states published by other services. The original project's CLI tools,
+shows the looks other services publish. The original project's CLI tools,
 helper scripts and packaging experiments are not included.
 
 The branch layout is designed for a GitHub Pages Debian repository:

@@ -5,11 +5,11 @@ CONF=/etc/ugreen-dxp-pve-leds.toml
 TEMPLATE=/usr/share/ugreen-dxp-pve-leds/ugreen-dxp-pve-leds.toml
 MIGRATE=/usr/libexec/ugreen-dxp-pve-leds/ugreen-dxp-leds-migrate
 # The 0.9.10 config if the admin edited it. dpkg-maintscript-helper (run in
-# #DEBHELPER# below) renames it from .dpkg-backup to .dpkg-bak.
+# the debhelper section below) renames it from .dpkg-backup to .dpkg-bak.
 LEGACY=/etc/ugreen-dxp-pve-leds.conf.dpkg-backup
 [ -e "$LEGACY" ] || LEGACY=/etc/ugreen-dxp-pve-leds.conf.dpkg-bak
 
-# Before #DEBHELPER#, which starts or restarts the daemon: it must find the
+# Before the debhelper section, which starts or restarts the daemon: it must find the
 # configuration in the current format.
 if [ "$1" = "configure" ]; then
     if ! "$MIGRATE" "$CONF" "$TEMPLATE" --legacy "$LEGACY"; then
