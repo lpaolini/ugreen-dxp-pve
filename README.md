@@ -45,9 +45,9 @@ The DKMS packages expose the UGREEN hardware through normal Linux sysfs
 interfaces on the Proxmox host. The LED package binds the onboard I2C LED
 controller at `0x3a`, loads the standard LED triggers, and runs
 `ugreen-dxp-pve-leds.service`, the only writer to the LEDs: other services
-publish named states under `/run/ugreen-dxp-pve/` and the daemon renders them
-using `/usr/share/ugreen-dxp-pve-leds/leds.toml` (overridable in
-`/etc/ugreen-dxp-pve-leds.toml`).
+publish looks (priority, colour, effect) under `/run/ugreen-dxp-leds/` and the
+daemon shows the lowest priority one on each LED. It drives the network LED
+itself; its settings live in `/etc/ugreen-dxp-pve-leds.toml`.
 Both DKMS packages load their kernel modules after installation and configure
 systemd modules-load entries so they are loaded again on reboot.
 
@@ -58,10 +58,10 @@ state to host hardware:
 - `ugreen-truenas-fan.service` reads disk temperatures from `sensors -j` inside
   TrueNAS, combines them with the host CPU temperature, and writes the selected
   PWM value to the UGREEN fan sysfs path. If the fan PWM write fails, it
-  publishes the `FAULT` state for the power LED until a later write succeeds.
+  publishes a blinking red look for the power LED until a later write succeeds.
 - `ugreen-truenas-zfs.service` reads `lsblk`, `zpool status -pj`, and optional
   disk standby data, maps VM disks back to physical UGREEN bays, and publishes
-  a state for LEDs `disk1` through `disk4`.
+  a look for LEDs `disk1` through `disk4`, as defined in `/etc/ugreen-dxp-pve-truenas.toml`.
 
 The TrueNAS package is aimed at Proxmox hosts running TrueNAS Scale as a VM with
 SATA controller passthrough. It has been tested on a DXP 4800 PRO; other DXP
@@ -74,16 +74,16 @@ front panel:
 
 |  | State | Meaning | Color | Effect |
 | --- | --- | --- | --- | --- |
-| <img src="packages/truenas/docs/assets/led-states/off.gif" alt="OFF LED" width="36"> | `OFF` | Empty bay or cleared LED | `0 0 0` | `none` |
-| <img src="packages/truenas/docs/assets/led-states/checking.gif" alt="CHECKING LED" width="36"> | `CHECKING` | Querying TrueNAS; previous color is preserved | unchanged | `blink 100 100` |
-| <img src="packages/truenas/docs/assets/led-states/online.gif" alt="ONLINE LED" width="36"> | `ONLINE` | Healthy online disk | `0 40 0` | `none` |
-| <img src="packages/truenas/docs/assets/led-states/online-alert.gif" alt="ONLINE_ALERT LED" width="36"> | `ONLINE_ALERT` | Healthy pool at or above alert threshold | `0 40 0` | `blink 500 500` |
-| <img src="packages/truenas/docs/assets/led-states/spindown.gif" alt="SPINDOWN LED" width="36"> | `SPINDOWN` | Healthy disk in standby/spindown | `0 40 0` | `breath 2000 0` |
-| <img src="packages/truenas/docs/assets/led-states/degraded.gif" alt="DEGRADED LED" width="36"> | `DEGRADED` | ZFS reports a degraded leaf vdev | `80 40 0` | `blink 500 500` |
-| <img src="packages/truenas/docs/assets/led-states/faulted.gif" alt="FAULTED LED" width="36"> | `FAULTED` / `UNAVAIL` / `REMOVED` / `OFFLINE` | ZFS reports a failed, unavailable, removed, or offline leaf vdev | `80 0 0` | `blink 500 500` |
-| <img src="packages/truenas/docs/assets/led-states/resilver.gif" alt="RESILVER LED" width="36"> | `RESILVER` | An associated pool is resilvering | `80 80 80` | `blink 500 500` |
-| <img src="packages/truenas/docs/assets/led-states/missing.gif" alt="MISSING LED" width="36"> | `MISSING` | A configured pool leaf is not present in any mapped bay | `40 0 40` | `blink 500 500` |
-| <img src="packages/truenas/docs/assets/led-states/error.gif" alt="ERROR LED" width="36"> | `ERROR` | TrueNAS status could not be queried or parsed | `80 0 0` | `none` |
+| <img src="packages/truenas/docs/assets/led-states/off.gif" alt="OFF LED" width="36"> | `OFF` | Empty bay or cleared LED | `#000000` | `none` |
+| <img src="packages/truenas/docs/assets/led-states/checking.gif" alt="CHECKING LED" width="36"> | `CHECKING` | Querying TrueNAS; previous color is preserved | unchanged | `blink:100:100` |
+| <img src="packages/truenas/docs/assets/led-states/online.gif" alt="ONLINE LED" width="36"> | `ONLINE` | Healthy online disk | `#002800` | `none` |
+| <img src="packages/truenas/docs/assets/led-states/online-alert.gif" alt="ONLINE_ALERT LED" width="36"> | `ONLINE_ALERT` | Healthy pool at or above alert threshold | `#002800` | `blink:500:500` |
+| <img src="packages/truenas/docs/assets/led-states/spindown.gif" alt="SPINDOWN LED" width="36"> | `SPINDOWN` | Healthy disk in standby/spindown | `#002800` | `breath:2000:0` |
+| <img src="packages/truenas/docs/assets/led-states/degraded.gif" alt="DEGRADED LED" width="36"> | `DEGRADED` | ZFS reports a degraded leaf vdev | `#502800` | `blink:500:500` |
+| <img src="packages/truenas/docs/assets/led-states/faulted.gif" alt="FAULTED LED" width="36"> | `FAULTED` / `UNAVAIL` / `REMOVED` / `OFFLINE` | ZFS reports a failed, unavailable, removed, or offline leaf vdev | `#500000` | `blink:500:500` |
+| <img src="packages/truenas/docs/assets/led-states/resilver.gif" alt="RESILVER LED" width="36"> | `RESILVER` | An associated pool is resilvering | `#505050` | `blink:500:500` |
+| <img src="packages/truenas/docs/assets/led-states/missing.gif" alt="MISSING LED" width="36"> | `MISSING` | A configured pool leaf is not present in any mapped bay | `#280028` | `blink:500:500` |
+| <img src="packages/truenas/docs/assets/led-states/error.gif" alt="ERROR LED" width="36"> | `ERROR` | TrueNAS status could not be queried or parsed | `#500000` | `none` |
 
 ## Install From The APT Repository
 
@@ -126,15 +126,13 @@ stable versions explicitly (apt never downgrades on its own), for example
 
 ### Configuration files
 
-- `/etc/ugreen-dxp-pve-leds.toml` (optional LED overrides)
-- `/etc/ugreen-dxp-pve-truenas-fan.conf` (`VMID` needs to be set)
-- `/etc/ugreen-dxp-pve-truenas-zfs.conf` (`VMID` needs to be set)
+- `/etc/ugreen-dxp-pve-leds.toml` (LED daemon: network LED, power LED looks)
+- `/etc/ugreen-dxp-pve-truenas.toml` (`vmid` needs to be set; fan, ZFS and disk LED looks)
 
 After setting the `VMID`, restart the services:
 
 ```bash
-systemctl restart ugreen-truenas-zfs.service
-systemctl restart ugreen-truenas-fan.service
+systemctl restart ugreen-truenas-zfs.service ugreen-truenas-fan.service
 ```
 
 Then, check the service status:

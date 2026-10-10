@@ -32,35 +32,33 @@ There are two services:
   health, spindown/standby state, missing disks, and resilvering for any pool
   associated with those bays.
 
-Both services poll every 30 seconds. Static configuration lives in two systemd
-environment files:
+Both services poll every 30 seconds. Their configuration lives in one file,
+`/etc/ugreen-dxp-pve-truenas.toml` (reference copy:
+`/usr/share/ugreen-dxp-pve-truenas/ugreen-dxp-pve-truenas.toml`):
 
-- `/etc/ugreen-dxp-pve-truenas-fan.conf`
-- `/etc/ugreen-dxp-pve-truenas-zfs.conf`
+- `vmid`: the Proxmox VM ID of your TrueNAS Scale VM. It is commented out on a
+  fresh install; set it before the services can run. Without it they exit
+  instead of guessing.
+- `[fan]`: poll interval, the disk and CPU fan curves, PWM limits and the
+  hwmon device. The fan helper finds the `/sys/class/hwmon/hwmon*` directory
+  whose `name` matches `hwmon_regex` (an ITE chip exposed by the it87 driver,
+  such as `it8613`) and uses `pwm_channel` to build the PWM, PWM enable and fan
+  RPM paths. If that does not fit your system, pin `pwm_path`,
+  `pwm_enable_path` and `input_path`.
+- `[zfs]`: poll interval, `alert_threshold` and `bays`, the disk path inside
+  TrueNAS of each front-panel bay.
+- `[power.FAULT]` and `[disk.*]`: how each state looks on the LEDs (see the
+  table below).
 
-The `VMID` setting is intentionally commented out with `100` as the example VM
-ID. Uncomment it and set it to the Proxmox VM ID of your TrueNAS Scale VM before
-starting the services. If `VMID` is not configured, the services exit instead of
-guessing.
-
-Edit those files when your hwmon paths, fan curves, ZFS bay mapping,
-or polling interval differ from the tested DXP 4800 PRO layout. The fan helper
-auto-discovers the `/sys/class/hwmon/hwmon*` directory whose `name` matches an
-ITE chip exposed by the it87 driver, such as `it8613`, and then uses
-`FAN_PWM_CHANNEL` to build the PWM, PWM enable, and fan RPM paths.
-The most commonly adjusted settings are `VMID`, `POLL_INTERVAL`,
-`FAN_HWMON_REGEX`, `FAN_HWMON_NAME`, `FAN_PWM_CHANNEL`, `CPU_TEMP_PATH`,
-`HDD_FAN_CURVE`, `CPU_FAN_CURVE`, `TEMP_CHIP_REGEX`, `ALERT_THRESHOLD`,
-and the `BAY_1_PATH` through `BAY_4_PATH` values. If auto-discovery does not
-fit your system, pin `FAN_PWM_PATH`, `FAN_PWM_ENABLE_PATH`, and
-`FAN_INPUT_PATH` explicitly.
+Upgrading from the two `.conf` files of earlier releases creates this file
+from them; the old files are kept as `*.conf.migrated`.
 
 ## Requirements
 
 - Proxmox running directly on the UGREEN DXP host.
 - TrueNAS Scale 25 or newer running as a Proxmox VM.
 - `ugreen-dxp-pve-leds-dkms` from the same release installed on the Proxmox host; its
-  `ugreen-dxp-pve-leds.service` renders the LED states these services publish.
+  `ugreen-dxp-pve-leds.service` shows the LED looks these services publish.
 - `ugreen-dxp-pve-it87-dkms` installed on the Proxmox host, so fan PWM controls
   are exposed through hwmon sysfs.
 - `hdparm` available inside the TrueNAS VM if you want the ZFS LED service to
@@ -71,7 +69,7 @@ fit your system, pin `FAN_PWM_PATH`, `FAN_PWM_ENABLE_PATH`, and
 
 Before installing this package directly, install the UGREEN DXP LED and it87
 DKMS packages from [`lpaolini/ugreen-dxp`](https://github.com/lpaolini/ugreen-dxp)
-on the Proxmox host. This is required because both services publish LED states
+on the Proxmox host. This is required because both services publish LED looks
 to `ugreen-dxp-pve-leds.service`, and `ugreen-truenas-fan.service` writes to
 the fan PWM sysfs controls exposed by the it87 package.
 
@@ -113,33 +111,26 @@ curl -LO https://lpaolini.github.io/ugreen-dxp-pve/downloads/ugreen-dxp-pve-true
 sudo apt install ./ugreen-dxp-pve-truenas_latest.deb
 ```
 
-The package installs the helpers to `/usr/bin`, installs the systemd units to
-`/lib/systemd/system`, installs configuration files to `/etc`, reloads systemd,
-and enables the fan and ZFS services. If an `/etc` config file is missing during
-package configuration, it is restored from the package defaults under
-`/usr/share/ugreen-dxp-pve-truenas/defaults`. Existing `/etc` config files are
-not overwritten. The services will not run successfully until `VMID` is
-configured.
+The package installs the helpers to `/usr/bin`, the systemd units to
+`/lib/systemd/system`, creates `/etc/ugreen-dxp-pve-truenas.toml` if it does
+not exist, reloads systemd, and enables the fan and ZFS services. An existing
+`/etc/ugreen-dxp-pve-truenas.toml` is never overwritten. The services will not
+run successfully until `vmid` is configured.
 
-So, after installing, edit both config files and uncomment/set `VMID` to the Proxmox
-VM ID of your TrueNAS Scale VM:
+So, after installing, set `vmid` to the Proxmox VM ID of your TrueNAS Scale VM:
 
 ```bash
-sudo nano /etc/ugreen-dxp-pve-truenas-fan.conf
-sudo nano /etc/ugreen-dxp-pve-truenas-zfs.conf
+sudo nano /etc/ugreen-dxp-pve-truenas.toml
 ```
 
-For example:
-
-```text
-VMID=100
+```toml
+vmid = 100
 ```
 
-Then restart the services so systemd starts them with the updated configuration:
+Then restart the services so they read the updated configuration:
 
 ```bash
-sudo systemctl restart ugreen-truenas-fan.service
-sudo systemctl restart ugreen-truenas-zfs.service
+sudo systemctl restart ugreen-truenas-fan.service ugreen-truenas-zfs.service
 ```
 
 To inspect the host fan-control paths manually:
@@ -154,30 +145,33 @@ ls -l /sys/class/hwmon/hwmon*/pwm* /sys/class/hwmon/hwmon*/fan*_input
 
 If the service logs `Permission denied` for a `pwmN` path, first verify that
 the selected hwmon directory is the ITE controller, for example `it8613`, and
-that the matching `pwmN_enable` file exists. Try a different `FAN_PWM_CHANNEL`,
+that the matching `pwmN_enable` file exists. Try a different `pwm_channel`,
 usually `2` or `3`, before pinning absolute `hwmonN` paths.
 
 ## LED showcase
 
-The ZFS service publishes these state names. Their colours and effects are
-defined on the host in `/usr/share/ugreen-dxp-pve-leds/leds.toml` and can be
-overridden in `/etc/ugreen-dxp-pve-leds.toml`.
+The ZFS service publishes one look per bay to `ugreen-dxp-pve-leds.service`,
+which shows the lowest priority look any service published for an LED. The
+looks are defined in `[disk.*]` of `/etc/ugreen-dxp-pve-truenas.toml`:
 
-|  | State | Description | Color | Effect |
-| --- | --- | --- | --- | --- |
-| <img src="docs/assets/led-states/off.gif" alt="OFF LED" width="36"> | `OFF` | Empty bay or cleared LED | `0 0 0` | `none` |
-| <img src="docs/assets/led-states/checking.gif" alt="CHECKING LED" width="36"> | `CHECKING` | Querying the TrueNAS VM; previous color is preserved | `unchanged` | `blink 100 100` |
-| <img src="docs/assets/led-states/online.gif" alt="ONLINE LED" width="36"> | `ONLINE` | Healthy online disk | `0 40 0` | `none` |
-| <img src="docs/assets/led-states/online-alert.gif" alt="ONLINE_ALERT LED" width="36"> | `ONLINE_ALERT` | Healthy disk in a pool at or above `ALERT_THRESHOLD` | `0 40 0` | `blink 500 500` |
-| <img src="docs/assets/led-states/spindown.gif" alt="SPINDOWN LED" width="36"> | `SPINDOWN` | Healthy disk in standby/spindown | `0 40 0` | `breath 2000 0` |
-| <img src="docs/assets/led-states/degraded.gif" alt="DEGRADED LED" width="36"> | `DEGRADED` | ZFS reports a degraded leaf vdev | `80 40 0` | `blink 500 500` |
-| <img src="docs/assets/led-states/faulted.gif" alt="FAULTED LED" width="36"> | `FAULTED` | ZFS reports a failed leaf vdev | `80 0 0` | `blink 500 500` |
-| <img src="docs/assets/led-states/unavail.gif" alt="UNAVAIL LED" width="36"> | `UNAVAIL` | ZFS reports an unavailable leaf vdev | `80 0 0` | `blink 500 500` |
-| <img src="docs/assets/led-states/removed.gif" alt="REMOVED LED" width="36"> | `REMOVED` | ZFS reports a removed leaf vdev | `80 0 0` | `blink 500 500` |
-| <img src="docs/assets/led-states/offline.gif" alt="OFFLINE LED" width="36"> | `OFFLINE` | ZFS reports an offline leaf vdev | `80 0 0` | `blink 500 500` |
-| <img src="docs/assets/led-states/resilver.gif" alt="RESILVER LED" width="36"> | `RESILVER` | Any associated pool is resilvering | `80 80 80` | `blink 500 500` |
-| <img src="docs/assets/led-states/missing.gif" alt="MISSING LED" width="36"> | `MISSING` | A configured pool leaf is not present in any mapped bay | `40 0 40` | `blink 500 500` |
-| <img src="docs/assets/led-states/error.gif" alt="ERROR LED" width="36"> | `ERROR` | The service could not query or parse the TrueNAS VM status | `80 0 0` | `none` |
+|  | State | Description | Priority | Color | Effect |
+| --- | --- | --- | --- | --- | --- |
+| <img src="docs/assets/led-states/faulted.gif" alt="FAULTED LED" width="36"> | `FAULTED` | ZFS reports a failed leaf vdev | 10 | `#500000` | `blink:500:500` |
+| <img src="docs/assets/led-states/error.gif" alt="ERROR LED" width="36"> | `ERROR` | The service could not query or parse the TrueNAS VM status | 15 | `#500000` | `none` |
+| <img src="docs/assets/led-states/unavail.gif" alt="UNAVAIL LED" width="36"> | `UNAVAIL` | ZFS reports an unavailable leaf vdev | 20 | `#500000` | `blink:500:500` |
+| <img src="docs/assets/led-states/removed.gif" alt="REMOVED LED" width="36"> | `REMOVED` | ZFS reports a removed leaf vdev | 25 | `#500000` | `blink:500:500` |
+| <img src="docs/assets/led-states/missing.gif" alt="MISSING LED" width="36"> | `MISSING` | A configured pool leaf is not present in any mapped bay | 30 | `#280028` | `blink:500:500` |
+| <img src="docs/assets/led-states/degraded.gif" alt="DEGRADED LED" width="36"> | `DEGRADED` | ZFS reports a degraded leaf vdev | 35 | `#502800` | `blink:500:500` |
+| <img src="docs/assets/led-states/resilver.gif" alt="RESILVER LED" width="36"> | `RESILVER` | Any associated pool is resilvering | 40 | `#505050` | `blink:500:500` |
+| <img src="docs/assets/led-states/offline.gif" alt="OFFLINE LED" width="36"> | `OFFLINE` | ZFS reports an offline leaf vdev | 45 | `#500000` | `blink:500:500` |
+| <img src="docs/assets/led-states/checking.gif" alt="CHECKING LED" width="36"> | `CHECKING` | Querying the TrueNAS VM; the bay keeps its colour | 50 | unchanged | `blink:100:100` |
+| <img src="docs/assets/led-states/online-alert.gif" alt="ONLINE_ALERT LED" width="36"> | `ONLINE_ALERT` | Healthy disk in a pool at or above `alert_threshold` | 60 | `#002800` | `blink:500:500` |
+| <img src="docs/assets/led-states/spindown.gif" alt="SPINDOWN LED" width="36"> | `SPINDOWN` | Healthy disk in standby/spindown | 65 | `#002800` | `breath:2000:0` |
+| <img src="docs/assets/led-states/online.gif" alt="ONLINE LED" width="36"> | `ONLINE` | Healthy online disk | 70 | `#002800` | `none` |
+| <img src="docs/assets/led-states/off.gif" alt="OFF LED" width="36"> | `OFF` | Empty bay | 90 | `#000000` | `none` |
+
+The fan service publishes `[power.FAULT]` (blinking red) to the power LED while
+it cannot control the fan.
 
 ## Build locally
 
