@@ -13,7 +13,7 @@ fi
 # Debian versions cannot include the common Git tag prefix.
 VERSION="${VERSION#v}"
 
-(cd "${PACKAGE_ROOT}" && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=../leds-dkms python3 -m unittest discover -s tests -t .)
+(cd "${PACKAGE_ROOT}" && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=../leds-dkms:src python3 -m unittest discover -s tests -t .)
 
 BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "${BUILD_DIR}"' EXIT
@@ -22,19 +22,19 @@ PKG_DIR="${BUILD_DIR}/${PACKAGE}_${VERSION}_all"
 
 install -d -m 0755 \
   "${PKG_DIR}/DEBIAN" \
-  "${PKG_DIR}/etc" \
   "${PKG_DIR}/usr/bin" \
+  "${PKG_DIR}/usr/lib/${PACKAGE}/ugreen_truenas" \
+  "${PKG_DIR}/usr/libexec/${PACKAGE}" \
   "${PKG_DIR}/usr/share/doc/${PACKAGE}" \
-  "${PKG_DIR}/usr/share/${PACKAGE}/defaults" \
+  "${PKG_DIR}/usr/share/${PACKAGE}" \
   "${PKG_DIR}/lib/systemd/system" \
   "${OUT_DIR}"
 
 install -m 0755 "${PACKAGE_ROOT}/src/fan/ugreen-truenas-fan.py" "${PKG_DIR}/usr/bin/ugreen-truenas-fan.py"
 install -m 0755 "${PACKAGE_ROOT}/src/zfs/ugreen-truenas-zfs.py" "${PKG_DIR}/usr/bin/ugreen-truenas-zfs.py"
-install -m 0644 "${PACKAGE_ROOT}/src/fan/ugreen-dxp-pve-truenas-fan.conf" "${PKG_DIR}/etc/ugreen-dxp-pve-truenas-fan.conf"
-install -m 0644 "${PACKAGE_ROOT}/src/zfs/ugreen-dxp-pve-truenas-zfs.conf" "${PKG_DIR}/etc/ugreen-dxp-pve-truenas-zfs.conf"
-install -m 0644 "${PACKAGE_ROOT}/src/fan/ugreen-dxp-pve-truenas-fan.conf" "${PKG_DIR}/usr/share/${PACKAGE}/defaults/ugreen-dxp-pve-truenas-fan.conf"
-install -m 0644 "${PACKAGE_ROOT}/src/zfs/ugreen-dxp-pve-truenas-zfs.conf" "${PKG_DIR}/usr/share/${PACKAGE}/defaults/ugreen-dxp-pve-truenas-zfs.conf"
+install -m 0644 "${PACKAGE_ROOT}"/src/ugreen_truenas/*.py "${PKG_DIR}/usr/lib/${PACKAGE}/ugreen_truenas/"
+install -m 0755 "${PACKAGE_ROOT}/src/migrate/ugreen-dxp-pve-truenas-migrate" "${PKG_DIR}/usr/libexec/${PACKAGE}/ugreen-dxp-pve-truenas-migrate"
+install -m 0644 "${PACKAGE_ROOT}/src/ugreen-dxp-pve-truenas.toml" "${PKG_DIR}/usr/share/${PACKAGE}/ugreen-dxp-pve-truenas.toml"
 
 for unit in \
   "${PACKAGE_ROOT}/src/fan/ugreen-truenas-fan.service" \
@@ -60,30 +60,50 @@ Description: UGREEN DXP Proxmox/TrueNAS fan and ZFS LED helpers
  disk LEDs from a TrueNAS VM running under Proxmox.
 CONTROL
 
-cat > "${PKG_DIR}/DEBIAN/conffiles" <<'CONFFILES'
-/etc/ugreen-dxp-pve-truenas-fan.conf
-/etc/ugreen-dxp-pve-truenas-zfs.conf
-CONFFILES
+cat > "${PKG_DIR}/DEBIAN/preinst" <<'PREINST'
+#!/bin/sh
+set -e
+
+# The 0.9.10 .conf files are replaced by /etc/ugreen-dxp-pve-truenas.toml. An
+# edited one is kept as .dpkg-bak for the migration in postinst.
+dpkg-maintscript-helper rm_conffile /etc/ugreen-dxp-pve-truenas-fan.conf -- "$@"
+dpkg-maintscript-helper rm_conffile /etc/ugreen-dxp-pve-truenas-zfs.conf -- "$@"
+PREINST
 
 cat > "${PKG_DIR}/DEBIAN/postinst" <<'POSTINST'
 #!/bin/sh
 set -e
 
-install_default_conf() {
-  src="$1"
-  dest="$2"
+dpkg-maintscript-helper rm_conffile /etc/ugreen-dxp-pve-truenas-fan.conf -- "$@"
+dpkg-maintscript-helper rm_conffile /etc/ugreen-dxp-pve-truenas-zfs.conf -- "$@"
 
-  if [ ! -e "$dest" ]; then
-    install -m 0644 "$src" "$dest"
-  fi
+CONF=/etc/ugreen-dxp-pve-truenas.toml
+TEMPLATE=/usr/share/ugreen-dxp-pve-truenas/ugreen-dxp-pve-truenas.toml
+MIGRATE=/usr/libexec/ugreen-dxp-pve-truenas/ugreen-dxp-pve-truenas-migrate
+
+# The old config file to migrate: dpkg's copy of an edited conffile, else the file.
+old_conf() {
+  for candidate in "$1.dpkg-bak" "$1"; do
+    if [ -e "$candidate" ]; then
+      echo "$candidate"
+      return
+    fi
+  done
 }
 
-install_default_conf \
-  /usr/share/ugreen-dxp-pve-truenas/defaults/ugreen-dxp-pve-truenas-fan.conf \
-  /etc/ugreen-dxp-pve-truenas-fan.conf
-install_default_conf \
-  /usr/share/ugreen-dxp-pve-truenas/defaults/ugreen-dxp-pve-truenas-zfs.conf \
-  /etc/ugreen-dxp-pve-truenas-zfs.conf
+if [ "${1:-}" = "configure" ] && [ ! -e "$CONF" ]; then
+  fan="$(old_conf /etc/ugreen-dxp-pve-truenas-fan.conf)"
+  zfs="$(old_conf /etc/ugreen-dxp-pve-truenas-zfs.conf)"
+  if [ -n "$fan$zfs" ] && "$MIGRATE" ${fan:+--fan "$fan"} ${zfs:+--zfs "$zfs"} "$TEMPLATE" "$CONF"; then
+    for old in "$fan" "$zfs"; do
+      if [ -n "$old" ]; then
+        mv "$old" "${old%.dpkg-bak}.migrated"
+      fi
+    done
+  else
+    install -m 0644 "$TEMPLATE" "$CONF"
+  fi
+fi
 
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload || true
@@ -113,12 +133,20 @@ cat > "${PKG_DIR}/DEBIAN/postrm" <<'POSTRM'
 #!/bin/sh
 set -e
 
+dpkg-maintscript-helper rm_conffile /etc/ugreen-dxp-pve-truenas-fan.conf -- "$@"
+dpkg-maintscript-helper rm_conffile /etc/ugreen-dxp-pve-truenas-zfs.conf -- "$@"
+
+if [ "${1:-}" = "purge" ]; then
+  rm -f /etc/ugreen-dxp-pve-truenas.toml
+fi
+
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload || true
 fi
 POSTRM
 
 chmod 0755 \
+  "${PKG_DIR}/DEBIAN/preinst" \
   "${PKG_DIR}/DEBIAN/postinst" \
   "${PKG_DIR}/DEBIAN/prerm" \
   "${PKG_DIR}/DEBIAN/postrm"
@@ -163,7 +191,7 @@ COPYRIGHT
 
 (
   cd "${PKG_DIR}"
-  find usr etc lib -type f -exec md5sum {} + > DEBIAN/md5sums
+  find usr lib -type f -exec md5sum {} + > DEBIAN/md5sums
 )
 
 dpkg-deb --build --root-owner-group "${PKG_DIR}" "${OUT_DIR}/${PACKAGE}_${VERSION}_all.deb"
