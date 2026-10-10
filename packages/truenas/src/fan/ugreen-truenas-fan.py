@@ -18,7 +18,7 @@ from dataclasses import dataclass
 sys.dont_write_bytecode = True  # never leave .pyc files in the packaged library
 # The LED library is shipped by ugreen-dxp-pve-leds-dkms.
 sys.path[:0] = ["/usr/lib/ugreen-dxp-pve-truenas", "/usr/lib/ugreen-dxp-pve-leds"]
-from ugreen_leds.tree import clear, publish, runtime_dir  # noqa: E402
+from ugreen_leds.tree import clear, publish, runtime_dir, runtime_dirs  # noqa: E402
 from ugreen_truenas.config import CONFIG_PATH, ConfigError, Fan, load  # noqa: E402
 
 TAG = "ugreen-truenas-fan"
@@ -35,10 +35,14 @@ POLL_INTERVAL = 30
 RESET_PWM_ON_EXIT = True
 TEMP_CHIP_REGEX = ""
 POWER_LED_FAULT_LOOK = None  # published for the power LED while the fan cannot be controlled
+TEMP_WARNING = TEMP_ALERT = 0  # °C, hottest disk
+POWER_LED_TEMP_LOOKS = {}  # "TEMP_WARNING" / "TEMP_ALERT" -> Look
+TEMP_PRODUCER = "truenas-temp"  # RuntimeDirectory that carries the temperature look
 
 syslog.openlog(TAG)
 STOP_REQUESTED = threading.Event()
 POWER_LED_FAULT_ACTIVE = None
+POWER_LED_TEMP_LEVEL = None  # temperature look published now
 
 
 @dataclass(frozen=True)
@@ -61,10 +65,11 @@ def dbg(msg):
 
 def configure(config):
     """Apply a loaded configuration to the module settings."""
-    global VMID, DEBUG, POWER_LED_FAULT_LOOK
+    global VMID, DEBUG, POWER_LED_FAULT_LOOK, POWER_LED_TEMP_LOOKS
     VMID = config.vmid
     DEBUG = config.debug
     POWER_LED_FAULT_LOOK = config.power["FAULT"]
+    POWER_LED_TEMP_LOOKS = {name: config.power[name] for name in ("TEMP_WARNING", "TEMP_ALERT")}
     configure_fan(config.fan)
 
 
@@ -74,7 +79,7 @@ def configure_fan(fan):
     global FAN_PWM_PATH, FAN_PWM_ENABLE_PATH, FAN_INPUT_PATH, CPU_TEMP_PATH
     global HDD_CURVE, CPU_CURVE, MIN_PWM, MAX_PWM, FAILSAFE_PWM
     global MANUAL_PWM_ENABLE_VALUE, AUTO_PWM_ENABLE_VALUE, POLL_INTERVAL, RESET_PWM_ON_EXIT
-    global TEMP_CHIP_REGEX
+    global TEMP_CHIP_REGEX, TEMP_WARNING, TEMP_ALERT
     FAN_HWMON_NAME = fan.hwmon_name
     FAN_HWMON_REGEX = fan.hwmon_regex
     FAN_PWM_CHANNEL = str(fan.pwm_channel)
@@ -93,6 +98,8 @@ def configure_fan(fan):
     POLL_INTERVAL = fan.poll_interval
     RESET_PWM_ON_EXIT = fan.reset_pwm_on_exit
     TEMP_CHIP_REGEX = fan.temp_chip_regex
+    TEMP_WARNING = fan.temp_warning
+    TEMP_ALERT = fan.temp_alert
 
 
 def clamp(value, low, high):
@@ -130,6 +137,42 @@ def set_power_led_fault(active):
         log(f"power LED state update failed: {e}")
         return False
     POWER_LED_FAULT_ACTIVE = active
+    return True
+
+
+def temperature_level(temp_c):
+    """The power LED look for the hottest disk temperature, or None below the warning."""
+    if temp_c >= TEMP_ALERT:
+        return "TEMP_ALERT"
+    if temp_c >= TEMP_WARNING:
+        return "TEMP_WARNING"
+    return None
+
+
+def temperature_dir():
+    """This unit's RuntimeDirectory for the temperature look, or None outside systemd."""
+    return next((path for path in runtime_dirs() if os.path.basename(path) == TEMP_PRODUCER),
+                None)
+
+
+def set_power_led_temperature(level):
+    """Publish the power LED look named `level`, or withdraw it for None."""
+    global POWER_LED_TEMP_LEVEL
+
+    if level == POWER_LED_TEMP_LEVEL:
+        return True
+    directory = temperature_dir()
+    if directory is None:  # run by hand, outside the systemd unit: leave no state behind
+        return False
+    try:
+        if level is None:
+            clear(directory, "power")
+        else:
+            publish(directory, "power", POWER_LED_TEMP_LOOKS[level])
+    except OSError as e:
+        log(f"power LED temperature update failed: {e}")
+        return False
+    POWER_LED_TEMP_LEVEL = level
     return True
 
 
@@ -394,22 +437,26 @@ def describe_readings(readings):
 def control_once():
     cpu_temp = read_temp_c(CPU_TEMP_PATH)
     if cpu_temp is None:
+        set_power_led_temperature(None)
         log(f"CPU temperature read failed: {CPU_TEMP_PATH}")
         apply_fan_pwm(FAILSAFE_PWM)
         return False
 
     sensors_obj = fetch_guest_sensors()
     if sensors_obj is None:
+        set_power_led_temperature(None)
         apply_fan_pwm(FAILSAFE_PWM)
         return False
 
     readings = collect_disk_temps(sensors_obj)
     if not readings:
+        set_power_led_temperature(None)
         log(f"no disk temperature readings matched temp_chip_regex={TEMP_CHIP_REGEX!r}")
         apply_fan_pwm(FAILSAFE_PWM)
         return False
 
     hottest = max(readings, key=lambda r: r.temp_c)
+    set_power_led_temperature(temperature_level(hottest.temp_c))
     hdd_pwm = pwm_for_temp(hottest.temp_c, HDD_CURVE)
     cpu_pwm = pwm_for_temp(cpu_temp, CPU_CURVE)
     pwm = max(hdd_pwm, cpu_pwm)

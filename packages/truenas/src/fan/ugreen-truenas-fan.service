@@ -5,7 +5,7 @@ Conflicts=fancontrol.service
 
 [Service]
 Type=simple
-RuntimeDirectory=ugreen-dxp-leds/truenas-fan
+RuntimeDirectory=ugreen-dxp-leds/truenas-fan ugreen-dxp-leds/truenas-temp
 ExecStart=/usr/local/bin/ugreen-truenas-fan.py --start
 ExecStopPost=/usr/local/bin/ugreen-truenas-fan.py --stop
 Restart=on-failure
