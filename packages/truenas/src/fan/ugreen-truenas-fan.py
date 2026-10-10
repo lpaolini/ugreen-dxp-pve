@@ -19,7 +19,7 @@ sys.dont_write_bytecode = True  # never leave .pyc files in the packaged library
 sys.path.append("/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
 sys.path.append("/usr/lib/ugreen-dxp-pve-truenas")
 from ugreen_leds.tree import clear, publish, runtime_dir  # noqa: E402
-from ugreen_truenas.config import CONFIG_PATH, ConfigError, load  # noqa: E402
+from ugreen_truenas.config import CONFIG_PATH, ConfigError, Fan, load  # noqa: E402
 
 TAG = "ugreen-truenas-fan"
 # Settings, set from the configuration by configure().
@@ -61,14 +61,20 @@ def dbg(msg):
 
 def configure(config):
     """Apply a loaded configuration to the module settings."""
-    global VMID, DEBUG, FAN_HWMON_NAME, FAN_HWMON_REGEX, FAN_PWM_CHANNEL, AUTO_DISCOVER_HWMON
+    global VMID, DEBUG, POWER_LED_FAULT_LOOK
+    VMID = config.vmid or ""
+    DEBUG = config.debug
+    POWER_LED_FAULT_LOOK = config.power["FAULT"]
+    configure_fan(config.fan)
+
+
+def configure_fan(fan):
+    """Apply the [fan] settings to the module settings."""
+    global FAN_HWMON_NAME, FAN_HWMON_REGEX, FAN_PWM_CHANNEL, AUTO_DISCOVER_HWMON
     global FAN_PWM_PATH, FAN_PWM_ENABLE_PATH, FAN_INPUT_PATH, CPU_TEMP_PATH
     global HDD_CURVE, CPU_CURVE, MIN_PWM, MAX_PWM, FAILSAFE_PWM
     global MANUAL_PWM_ENABLE_VALUE, AUTO_PWM_ENABLE_VALUE, POLL_INTERVAL, RESET_PWM_ON_EXIT
-    global TEMP_CHIP_REGEX, POWER_LED_FAULT_LOOK
-    fan = config.fan
-    VMID = config.vmid or ""
-    DEBUG = config.debug
+    global TEMP_CHIP_REGEX
     FAN_HWMON_NAME = fan.hwmon_name
     FAN_HWMON_REGEX = fan.hwmon_regex
     FAN_PWM_CHANNEL = str(fan.pwm_channel)
@@ -87,7 +93,6 @@ def configure(config):
     POLL_INTERVAL = fan.poll_interval
     RESET_PWM_ON_EXIT = fan.reset_pwm_on_exit
     TEMP_CHIP_REGEX = fan.temp_chip_regex
-    POWER_LED_FAULT_LOOK = config.power["FAULT"]
 
 
 def require_vmid():
@@ -240,11 +245,7 @@ def hwmon_name_matches(name):
         return True
 
     if FAN_HWMON_REGEX:
-        try:
-            return re.search(FAN_HWMON_REGEX, name) is not None
-        except re.error as e:
-            log(f"invalid FAN_HWMON_REGEX={FAN_HWMON_REGEX!r}: {e}")
-            return False
+        return re.search(FAN_HWMON_REGEX, name) is not None
 
     return False
 
@@ -287,16 +288,12 @@ def resolve_host_hwmon_paths():
     if not hwmon_dir:
         dbg(
             "Could not find matching fan hwmon device "
-            f"(FAN_HWMON_NAME={FAN_HWMON_NAME!r}, FAN_HWMON_REGEX={FAN_HWMON_REGEX!r}); "
+            f"([fan] hwmon_name={FAN_HWMON_NAME!r}, hwmon_regex={FAN_HWMON_REGEX!r}); "
             "using configured fan paths"
         )
         return
 
     channel = FAN_PWM_CHANNEL
-    if not channel.isdigit():
-        log(f"invalid FAN_PWM_CHANNEL={channel!r}; expected a numeric pwm/fan channel")
-        return
-
     pwm_path = os.path.join(hwmon_dir, f"pwm{channel}")
     pwm_enable_path = os.path.join(hwmon_dir, f"pwm{channel}_enable")
     fan_input_path = os.path.join(hwmon_dir, f"fan{channel}_input")
@@ -461,7 +458,12 @@ def main():
         configure(load(args.config))
     except ConfigError as e:
         log(f"invalid configuration: {e}")
-        sys.exit(1)
+        if not args.stop:
+            sys.exit(1)
+        # Still hand the fan back to automatic control, using the built-in defaults.
+        configure_fan(Fan())
+        resolve_host_hwmon_paths()
+        sys.exit(0 if set_fan_auto() else 1)
 
     resolve_host_hwmon_paths()
 

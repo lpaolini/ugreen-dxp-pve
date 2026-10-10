@@ -47,6 +47,31 @@ class FanPowerFaultTest(RuntimeDirectoryTestCase):
         self.assertEqual(self.read("power"), FAULT)
 
 
+class FanStopTest(RuntimeDirectoryTestCase):
+    def run_main(self, *args):
+        bad = os.path.join(self.dir, "bad.toml")
+        with open(bad, "w") as f:
+            f.write("this is [not toml")
+        argv = ["x", *args, "--config", bad]
+        with mock.patch.object(fan.sys, "argv", argv), \
+                mock.patch.object(fan, "log"), \
+                mock.patch.object(fan, "resolve_host_hwmon_paths"), \
+                mock.patch.object(fan, "set_fan_auto", return_value=True) as auto:
+            with self.assertRaises(SystemExit) as cm:
+                fan.main()
+        return cm.exception.code, auto
+
+    def test_stop_resets_the_fan_despite_an_invalid_config(self):
+        code, auto = self.run_main("--stop")
+        self.assertEqual(code, 0)
+        auto.assert_called_once()
+
+    def test_start_with_an_invalid_config_exits_1(self):
+        code, auto = self.run_main("--start")
+        self.assertEqual(code, 1)
+        auto.assert_not_called()
+
+
 class FanConfigureTest(unittest.TestCase):
     def test_settings_come_from_the_configuration(self):
         fan.configure(load(TEMPLATE))
