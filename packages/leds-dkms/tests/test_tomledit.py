@@ -81,10 +81,6 @@ class SetKeyTest(unittest.TestCase):
             set_key(TEXT, "shutdown", "color", "#ffffff")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 TEMPLATE = """# header
 debug = false
 
@@ -117,3 +113,7 @@ class AddMissingTablesTest(unittest.TestCase):
         text, added = add_missing_tables("[a]\nx = 1\n[b]\ny = 1\n[c]", "[a]\n[b]\n[c]\n[d]\nw = 0\n")
         self.assertEqual(added, ["d"])
         self.assertEqual(tomllib.loads(text)["d"], {"w": 0})
+
+
+if __name__ == "__main__":
+    unittest.main()
