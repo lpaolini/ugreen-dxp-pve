@@ -26,7 +26,12 @@ class TemplateTest(unittest.TestCase):
         self.assertEqual(config.disk["DEGRADED"], Look(35, "#502800", "blink:500:500", "DEGRADED"))
         self.assertEqual(config.disk["CHECKING"], Look(50, "#282828", "blink:100:100", "CHECKING"))
         self.assertEqual(config.disk["OFF"], Look(90, "#000000", state="OFF"))
-        self.assertEqual(config.power, {"FAULT": Look(10, "#ff0000", "blink:500:500", "FAULT")})
+        self.assertEqual(config.power, {
+            "FAULT": Look(10, "#ff0000", "blink:500:500", "FAULT"),
+            "TEMP_ALERT": Look(20, "#ff0000", state="TEMP_ALERT"),
+            "TEMP_WARNING": Look(30, "#ff8000", state="TEMP_WARNING"),
+        })
+        self.assertEqual((config.fan.temp_warning, config.fan.temp_alert), (40, 43))
         priorities = [look.priority for look in config.disk.values()]
         self.assertEqual(priorities, sorted(priorities))  # most severe first
 
@@ -74,6 +79,10 @@ class BuildTest(unittest.TestCase):
         cases = {
             "missing disk state": (setter(("disk", "CHECKING"), KeyError), r"\[disk.CHECKING\] is required"),
             "missing power state": (setter(("power", "FAULT"), KeyError), r"\[power.FAULT\] is required"),
+            "missing temperature look": (setter(("power", "TEMP_WARNING"), KeyError), r"\[power.TEMP_WARNING\] is required"),
+            "warning not below alert": (setter(("fan", "temp_warning"), 43), "fan.temp_warning must be below fan.temp_alert"),
+            "bool temperature": (setter(("fan", "temp_alert"), True), "fan.temp_alert"),
+            "nan temperature": (setter(("fan", "temp_warning"), float("nan")), "fan.temp_warning"),
             "unknown state": (setter(("power", "NORMAL"), {"priority": 1, "color": "#000000"}), "unknown keys NORMAL"),
             "unknown top-level key": (setter(("extra",), 1), "unknown keys extra"),
             "unknown fan key": (setter(("fan", "pwm"), 1), "fan: unknown keys pwm"),

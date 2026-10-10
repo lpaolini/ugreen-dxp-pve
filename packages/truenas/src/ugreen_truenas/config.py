@@ -11,7 +11,7 @@ CONFIG_PATH = "/etc/ugreen-dxp-pve-truenas.toml"
 # Every state the ZFS service can publish, most severe first.
 DISK_STATES = ("FAULTED", "ERROR", "UNAVAIL", "REMOVED", "MISSING", "DEGRADED", "RESILVER",
                "OFFLINE", "CHECKING", "ONLINE_ALERT", "SPINDOWN", "ONLINE", "OFF")
-POWER_STATES = ("FAULT",)  # published by the fan service
+POWER_STATES = ("FAULT", "TEMP_ALERT", "TEMP_WARNING")  # published by the fan service
 MAX_BAYS = 8  # disk1 ... disk8
 DEFAULT_VMID = 100
 
@@ -35,6 +35,8 @@ class Fan:
     hwmon_regex: str = r"^it[0-9]+$"
     pwm_channel: int = 3
     temp_chip_regex: str = r"(?i)(drivetemp|nvme|ata|scsi|sas|sat|disk|hdd|ssd)"
+    temp_warning: float = 40
+    temp_alert: float = 43
     hwmon_name: str = ""
     pwm_path: str = ""
     pwm_enable_path: str = ""
@@ -71,6 +73,12 @@ def _int(low, high=None):
             raise ValueError(f"must be an integer {limit}, got {value!r}")
         return value
     return check
+
+
+def _temperature(value):
+    if not (_is_number(value) and math.isfinite(value)):
+        raise ValueError(f"must be a temperature in °C, got {value!r}")
+    return value
 
 
 def _positive(value):
@@ -134,7 +142,8 @@ FAN_CHECKS = {
     "min_pwm": _int(0, 255), "max_pwm": _int(0, 255), "failsafe_pwm": _int(0, 255),
     "manual_pwm_enable_value": _int(0), "auto_pwm_enable_value": _int(0),
     "reset_pwm_on_exit": _bool, "auto_discover_hwmon": _bool, "hwmon_regex": _regex,
-    "pwm_channel": _int(1), "temp_chip_regex": _regex, "hwmon_name": _str, "pwm_path": _str,
+    "pwm_channel": _int(1), "temp_chip_regex": _regex, "temp_warning": _temperature, "temp_alert": _temperature,
+    "hwmon_name": _str, "pwm_path": _str,
     "pwm_enable_path": _str, "input_path": _str, "cpu_temp_path": _str,
 }
 ZFS_CHECKS = {"poll_interval": _positive, "alert_threshold": _fraction, "bays": _bays}
@@ -159,6 +168,8 @@ def build(data):
     fan = _settings(Fan, "fan", _table(data, "fan"), FAN_CHECKS)
     if fan.min_pwm > fan.max_pwm:
         raise ConfigError("fan.min_pwm must not exceed fan.max_pwm")
+    if fan.temp_warning >= fan.temp_alert:
+        raise ConfigError("fan.temp_warning must be below fan.temp_alert")
     return Config(
         vmid=vmid,
         debug=_checked("debug", _bool, data.get("debug", False)),

@@ -32,6 +32,10 @@ hwmon_regex = "^it[0-9]+$"
 pwm_channel = 3
 # Only TrueNAS sensor chips matching this count as disk temperatures.
 temp_chip_regex = "(?i)(drivetemp|nvme|ata|scsi|sas|sat|disk|hdd|ssd)"
+# The power LED turns orange when the hottest disk reaches temp_warning and
+# red at temp_alert (°C).
+temp_warning = 40
+temp_alert = 43
 # Set these only to pin exact sysfs paths:
 # hwmon_name = "it8613"
 # pwm_path = "/sys/class/hwmon/hwmon3/pwm3"
@@ -58,6 +62,16 @@ bays = ["/dev/disk/by-path/pci-0000:00:10.0-ata-1", "/dev/disk/by-path/pci-0000:
 priority = 10
 color = "#ff0000"
 effect = "blink:500:500"
+
+# The power LED while the hottest disk is at or above [fan] temp_alert.
+[power.TEMP_ALERT]
+priority = 20
+color = "#ff0000"
+
+# The power LED while the hottest disk is at or above [fan] temp_warning.
+[power.TEMP_WARNING]
+priority = 30
+color = "#ff8000"
 
 # Disk LEDs, most severe first.
 [disk.FAULTED]
