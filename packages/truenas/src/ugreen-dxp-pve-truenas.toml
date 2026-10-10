@@ -1,0 +1,128 @@
+# Configuration for ugreen-truenas-fan.service and ugreen-truenas-zfs.service.
+#
+# Apply changes with:
+#   systemctl restart ugreen-truenas-fan.service ugreen-truenas-zfs.service
+
+# Proxmox VM ID of the TrueNAS Scale VM. Both services exit until it is set.
+# vmid = 100
+
+# Log every poll in detail.
+debug = false
+
+[fan]
+# Seconds between polls.
+poll_interval = 30
+# [temperature °C, PWM 0-255] points. The fan runs at the higher PWM of the
+# hottest disk on hdd_curve and the host CPU on cpu_curve.
+hdd_curve = [[30, 90], [35, 120], [40, 175], [43, 220], [45, 255]]
+cpu_curve = [[45, 90], [55, 115], [65, 150], [75, 190], [85, 225], [95, 255]]
+min_pwm = 90
+max_pwm = 255
+# PWM used when temperatures cannot be read.
+failsafe_pwm = 255
+manual_pwm_enable_value = 1
+auto_pwm_enable_value = 2
+# Hand the fan back to the chip's automatic control when the service stops.
+reset_pwm_on_exit = true
+# Find /sys/class/hwmon/hwmon* by its name instead of its number, which can
+# change between boots. DXP4800-class systems expose the wired fans as pwm2
+# and pwm3 of the it87 chip.
+auto_discover_hwmon = true
+hwmon_regex = "^it[0-9]+$"
+pwm_channel = 3
+# Only TrueNAS sensor chips matching this count as disk temperatures.
+temp_chip_regex = "(?i)(drivetemp|nvme|ata|scsi|sas|sat|disk|hdd|ssd)"
+# Set these only to pin exact sysfs paths:
+# hwmon_name = "it8613"
+# pwm_path = "/sys/class/hwmon/hwmon3/pwm3"
+# pwm_enable_path = "/sys/class/hwmon/hwmon3/pwm3_enable"
+# input_path = "/sys/class/hwmon/hwmon3/fan3_input"
+# cpu_temp_path = "/sys/class/hwmon/hwmon4/temp1_input"
+
+[zfs]
+# Seconds between polls.
+poll_interval = 30
+# A healthy disk in a pool at least this full shows ONLINE_ALERT.
+alert_threshold = 0.75
+# The disk path inside TrueNAS of each bay, bay 1 first; bay N drives LED diskN.
+# These match the DXP4800 PRO backplane: check with `ls -l /dev/disk/by-path/`
+# inside TrueNAS.
+bays = ["/dev/disk/by-path/pci-0000:00:10.0-ata-1", "/dev/disk/by-path/pci-0000:00:10.0-ata-2", "/dev/disk/by-path/pci-0000:00:10.0-ata-3", "/dev/disk/by-path/pci-0000:00:10.0-ata-4"]
+
+# LED looks. Colours are "#rrggbb"; effects are "none", "blink:ON:OFF" or
+# "breath:ON:OFF" (milliseconds). Among all services publishing for an LED,
+# the lowest priority wins.
+
+# The power LED while the fan cannot be controlled.
+[power.FAULT]
+priority = 10
+color = "#ff0000"
+effect = "blink:500:500"
+
+# Disk LEDs, most severe first.
+[disk.FAULTED]
+priority = 10
+color = "#500000"
+effect = "blink:500:500"
+
+# TrueNAS could not be queried or its answer parsed.
+[disk.ERROR]
+priority = 15
+color = "#500000"
+
+[disk.UNAVAIL]
+priority = 20
+color = "#500000"
+effect = "blink:500:500"
+
+[disk.REMOVED]
+priority = 25
+color = "#500000"
+effect = "blink:500:500"
+
+# A pool member that is in no bay.
+[disk.MISSING]
+priority = 30
+color = "#280028"
+effect = "blink:500:500"
+
+[disk.DEGRADED]
+priority = 35
+color = "#502800"
+effect = "blink:500:500"
+
+[disk.RESILVER]
+priority = 40
+color = "#505050"
+effect = "blink:500:500"
+
+[disk.OFFLINE]
+priority = 45
+color = "#500000"
+effect = "blink:500:500"
+
+# Shown while TrueNAS is queried. The bay keeps its current colour; this
+# colour is used only for a bay that has shown nothing yet.
+[disk.CHECKING]
+priority = 50
+color = "#282828"
+effect = "blink:100:100"
+
+[disk.ONLINE_ALERT]
+priority = 60
+color = "#002800"
+effect = "blink:500:500"
+
+[disk.SPINDOWN]
+priority = 65
+color = "#002800"
+effect = "breath:2000:0"
+
+[disk.ONLINE]
+priority = 70
+color = "#002800"
+
+# An empty bay.
+[disk.OFF]
+priority = 90
+color = "#000000"

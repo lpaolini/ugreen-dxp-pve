@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+TEMPLATE = ROOT / "src" / "ugreen-dxp-pve-truenas.toml"
 
 
 def load_script(name, relpath):
