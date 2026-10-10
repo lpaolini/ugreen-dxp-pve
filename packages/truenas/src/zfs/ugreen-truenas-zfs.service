@@ -1,11 +1,10 @@
 [Unit]
-Description=Publish UGREEN front-panel disk LED states from TrueNAS ZFS status
+Description=Publish UGREEN front-panel disk LED looks from TrueNAS ZFS status
 After=pve-guests.service
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/ugreen-dxp-pve-truenas-zfs.conf
-RuntimeDirectory=ugreen-dxp-pve/zfs
+RuntimeDirectory=ugreen-dxp-leds/truenas-zfs
 ExecStart=/usr/local/bin/ugreen-truenas-zfs.py --start
 Restart=on-failure
 RestartSec=10s

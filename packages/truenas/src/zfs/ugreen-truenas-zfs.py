@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-# Poll ZFS status inside the TrueNAS VM and publish front-panel disk LED states.
+# Poll ZFS status inside the TrueNAS VM and publish front-panel disk LED looks.
 # Requires: qemu-guest-agent running inside TrueNAS and ugreen-dxp-pve-leds.service
-# on the host, which renders the states published under /run/ugreen-dxp-pve/zfs.
+# on the host, which shows what is published under /run/ugreen-dxp-leds/truenas-zfs.
 import argparse
+import dataclasses
 import json
-import os
 import shlex
 import signal
 import subprocess
@@ -15,20 +15,19 @@ import threading
 
 sys.dont_write_bytecode = True  # never leave .pyc files in the packaged library
 sys.path.append("/usr/lib/ugreen-dxp-pve-leds")  # shipped by ugreen-dxp-pve-leds-dkms
+sys.path.append("/usr/lib/ugreen-dxp-pve-truenas")
 from ugreen_leds.tree import publish, runtime_dir  # noqa: E402
+from ugreen_truenas.config import CONFIG_PATH, ConfigError, load  # noqa: E402
 
-VMID = os.environ.get("VMID", "").strip()
 TAG = "ugreen-truenas-zfs"
-DEBUG = os.environ.get("DEBUG", "1") == "1"
-POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "30"))
-# Bay N is wired to the path shown — UGREEN backplane constant.
-# Verify with `ls -l /dev/disk/by-path/` inside the guest.
-BAYS = {
-    "1": os.environ.get("BAY_1_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-1"),
-    "2": os.environ.get("BAY_2_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-2"),
-    "3": os.environ.get("BAY_3_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-3"),
-    "4": os.environ.get("BAY_4_PATH", "/dev/disk/by-path/pci-0000:00:10.0-ata-4"),
-}
+# Settings, set from the configuration by configure().
+VMID = ""
+DEBUG = False
+POLL_INTERVAL = 30
+BAYS = {}  # bay number ("1", "2", ...) -> disk path inside the guest
+ALERT_THRESHOLD = 0.75  # pool fill ratio at which ONLINE becomes ONLINE_ALERT
+DISK_LOOKS = {}  # ZFS LED state -> Look
+LAST_COLOR = {}  # bay -> colour of the last look published for it
 
 # Severity ordering, so a partition-level FAULTED wins over a disk-level ONLINE.
 # ONLINE_ALERT ranks just above ONLINE so a disk that is healthy-but-full on one
@@ -37,8 +36,6 @@ STATE_RANK = {"ONLINE": 0, "ONLINE_ALERT": 1, "OFFLINE": 2, "DEGRADED": 3,
               "REMOVED": 4, "UNAVAIL": 5, "FAULTED": 6}
 UNRANKED = len(STATE_RANK)  # rank for any unexpected state — sorts above all known ones
 
-# Fill ratio at or above which an ONLINE leaf is upgraded to ONLINE_ALERT.
-ALERT_THRESHOLD = float(os.environ.get("ALERT_THRESHOLD", "0.75"))
 
 syslog.openlog(TAG)
 STOP_REQUESTED = threading.Event()
@@ -54,10 +51,22 @@ def dbg(msg):
         print(f"[{TAG}][debug] {msg}", file=sys.stderr)
 
 
+def configure(config):
+    """Apply a loaded configuration to the module settings."""
+    global VMID, DEBUG, POLL_INTERVAL, BAYS, ALERT_THRESHOLD, DISK_LOOKS
+    VMID = config.vmid or ""
+    DEBUG = config.debug
+    POLL_INTERVAL = config.zfs.poll_interval
+    BAYS = {str(n): path for n, path in enumerate(config.zfs.bays, 1)}
+    ALERT_THRESHOLD = config.zfs.alert_threshold
+    DISK_LOOKS = config.disk
+    LAST_COLOR.clear()
+
+
 def require_vmid():
     if VMID:
         return True
-    log("VMID is not configured; set VMID in /etc/ugreen-dxp-pve-truenas-zfs.conf")
+    log("vmid is not configured; set vmid in /etc/ugreen-dxp-pve-truenas.toml")
     return False
 
 
@@ -74,15 +83,25 @@ def _guest_spindown_arg(bay, path):
 
 
 def set_led(n, state_key):
+    """Publish the look of `state_key` to LED disk<n>.
+
+    CHECKING keeps the colour last published for the bay, so the LED blinks
+    fast in its current colour while the guest is queried.
+    """
+    look = DISK_LOOKS[state_key]
+    if state_key == "CHECKING":
+        look = dataclasses.replace(look, color=LAST_COLOR.get(n, look.color))
     dbg(f"LED {n} -> {state_key}")
     directory = runtime_dir()
     if directory is None:  # run by hand, outside the systemd unit: leave no state behind
         return False
     try:
-        publish(directory, f"disk{n}", state_key)
+        publish(directory, f"disk{n}", look)
     except OSError as e:
-        log(f"LED state publish failed: disk{n}={state_key}: {e}")
+        log(f"LED look publish failed: disk{n}={state_key}: {e}")
         return False
+    if state_key != "CHECKING":
+        LAST_COLOR[n] = look.color
     return True
 
 
@@ -334,9 +353,16 @@ def run_loop():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Publish UGREEN front-panel LED states from TrueNAS ZFS status")
+    parser = argparse.ArgumentParser(description="Publish UGREEN front-panel LED looks from TrueNAS ZFS status")
     parser.add_argument("--start", action="store_true", help="run continuously instead of polling once")
+    parser.add_argument("--config", default=CONFIG_PATH, help="configuration file (default: %(default)s)")
     args = parser.parse_args()
+
+    try:
+        configure(load(args.config))
+    except ConfigError as e:
+        log(f"invalid configuration: {e}")
+        sys.exit(1)
 
     if not require_vmid():
         sys.exit(1)
