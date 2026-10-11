@@ -1,7 +1,7 @@
 import tomllib
 import unittest
 
-from ugreen_leds.tomledit import add_missing_tables, set_key, toml_value
+from ugreen_leds.tomledit import add_missing_tables, replace_table, set_key, toml_value
 
 TEXT = """# top comment
 # vmid = 100
@@ -113,6 +113,23 @@ class AddMissingTablesTest(unittest.TestCase):
         text, added = add_missing_tables("[a]\nx = 1\n[b]\ny = 1\n[c]", "[a]\n[b]\n[c]\n[d]\nw = 0\n")
         self.assertEqual(added, ["d"])
         self.assertEqual(tomllib.loads(text)["d"], {"w": 0})
+
+
+class ReplaceTableTest(unittest.TestCase):
+    def test_replaces_only_the_body(self):
+        text = "debug = true\n\n[a]\n# old\nx = 5\nold = 1\n\n# About b.\n[b]\ny = 9\n"
+        result = replace_table(text, TEMPLATE, "a")
+        self.assertEqual(result, "debug = true\n\n[a]\nx = 1\n\n# About b.\n[b]\ny = 9\n")
+
+    def test_last_table(self):
+        result = replace_table("[c]\nz = 9\nextra = 1\n", TEMPLATE, "c")
+        self.assertEqual(tomllib.loads(result), {"c": {"z": 3}})
+
+    def test_missing_table(self):
+        with self.assertRaises(KeyError):
+            replace_table("[a]\nx = 1\n", TEMPLATE, "d")
+        with self.assertRaises(KeyError):
+            replace_table("[x]\n", TEMPLATE, "x")
 
 
 if __name__ == "__main__":

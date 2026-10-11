@@ -41,6 +41,28 @@ def _table_body(lines, table):
     return first, end
 
 
+def _body(lines, table):
+    """(first, end) of the body of `[table]`, leaving the comment lines right
+    above the next header to that table."""
+    first, end = _table_body(lines, table)
+    if end < len(lines):
+        while end > first and lines[end - 1].lstrip().startswith("#"):
+            end -= 1
+    return first, end
+
+
+def replace_table(text, template, table):
+    """Return `text` with the body of `[table]` replaced by its body in `template`.
+
+    Raises KeyError if either has no `[table]` header.
+    """
+    lines = text.splitlines(keepends=True)
+    first, end = _body(lines, table)
+    new = template.splitlines(keepends=True)
+    new_first, new_end = _body(new, table)
+    return "".join(lines[:first] + new[new_first:new_end] + lines[end:])
+
+
 def set_key(text, table, key, value):
     """Return `text` with `key = value` in `[table]` (None: the top level).
 
