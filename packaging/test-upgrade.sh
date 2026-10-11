@@ -59,7 +59,11 @@ apt-get install -y -qq ugreen-dxp-pve-truenas >/dev/null
 echo "installed: $(dpkg-query -W -f='${Package} ${Version}  ' 'ugreen-dxp-pve-*')"
 
 # Edit the configuration like an admin would, in the format the installed release uses.
+export EXPECTED_MIN_PWM=80
 if [[ -e /etc/ugreen-dxp-pve-truenas.toml ]]; then
+  if grep -q '^hdd_curve' /etc/ugreen-dxp-pve-truenas.toml; then
+    EXPECTED_MIN_PWM=90  # an old-style [fan] is replaced by the defaults
+  fi
   sed -i -e 's/^#* *vmid = .*/vmid = 105/' -e 's/^min_pwm = .*/min_pwm = 80/' \
     /etc/ugreen-dxp-pve-truenas.toml
   old_truenas_confs=false
@@ -86,6 +90,7 @@ echo "upgraded: $(dpkg-query -W -f='${Package} ${Version}  ' 'ugreen-dxp-pve-*')
 
 check() {
   python3 - <<'EOF'
+import os
 import sys
 sys.path[:0] = ["/usr/lib/ugreen-dxp-pve-truenas", "/usr/lib/ugreen-dxp-pve-leds"]
 from ugreen_leds.config import load_config
@@ -96,7 +101,7 @@ assert leds.i2c_bus == 1, leds
 assert dict(leds.netdev)["device_name"] == "vmbr1", leds.netdev
 truenas = load()
 assert truenas.vmid == "105", truenas
-assert truenas.fan.min_pwm == 80, truenas.fan
+assert truenas.fan.min_pwm == int(os.environ["EXPECTED_MIN_PWM"]), truenas.fan
 assert {"TEMP_WARNING", "TEMP_ALERT"} <= set(truenas.power), truenas.power
 EOF
   if [[ "${old_truenas_confs}" == true ]]; then
