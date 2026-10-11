@@ -377,7 +377,7 @@ def control_once():
     readings = collect_disk_temps(sensors_obj)
     if not readings:
         set_power_led_temperature(None)
-        log(f"no disk temperature readings matched temp_chip_regex={TEMP_CHIP_REGEX!r}")
+        log(f"no disk temperature readings from sensor chips matching {TEMP_CHIP_REGEX!r}")
         apply_fan_pwm(FAILSAFE_PWM)
         return False
 
