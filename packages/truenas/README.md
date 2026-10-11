@@ -21,8 +21,8 @@ There are two services:
 
 - `ugreen-truenas-fan.service` polls disk temperatures from `sensors -j` inside
   the TrueNAS VM, reads the host CPU temperature from sysfs, chooses the higher
-  PWM value from the configured disk and CPU fan curves, and writes that value to
-  the UGREEN fan PWM sysfs path on the Proxmox host. If temperature collection
+  PWM value from the disk and CPU target temperatures and ramps, and writes that
+  value to the UGREEN fan PWM sysfs path on the Proxmox host. If temperature collection
   fails, it uses the configured failsafe PWM. If the fan PWM path cannot be
   controlled, it publishes a blinking red look for the power LED until a later
   PWM write succeeds. It also shows the hottest disk on the power LED: orange
@@ -38,13 +38,13 @@ Both services poll every 30 seconds. Their configuration lives in one file,
 `/usr/share/ugreen-dxp-pve-truenas/ugreen-dxp-pve-truenas.toml`):
 
 - `vmid`: the Proxmox VM ID of your TrueNAS Scale VM, `100` by default.
-- `[fan]`: poll interval, the disk and CPU fan curves, PWM limits and the
-  hwmon device. The fan helper finds the `/sys/class/hwmon/hwmon*` directory
-  whose `name` matches `hwmon_regex` (an ITE chip exposed by the it87 driver,
-  such as `it8613`) and uses `pwm_channel` to build the PWM, PWM enable and fan
-  RPM paths. If that does not fit your system, pin `pwm_path`,
-  `pwm_enable_path` and `input_path`. `temp_warning` and `temp_alert` set the
-  disk temperatures at which the power LED turns orange and red.
+- `[fan]`: poll interval, fan speed limits (`min_pwm`, `max_pwm`, PWM 0-255),
+  and for the hottest disk and the host CPU a target temperature and a ramp:
+  the fan stays at `min_pwm` up to the target and speeds up by `ramp` PWM for
+  every °C above it. The fan helper drives `pwmN` (N = `pwm_channel`) of the
+  ITE chip exposed by the it87 driver, such as `it8613`. `temp_warning` and
+  `temp_alert` set the disk temperatures at which the power LED turns orange
+  and red.
 - `[zfs]`: poll interval, `alert_threshold` and `bays`, the disk path inside
   TrueNAS of each front-panel bay.
 - `[power.*]` and `[disk.*]`: how each state looks on the LEDs (see the
@@ -53,6 +53,10 @@ Both services poll every 30 seconds. Their configuration lives in one file,
 Upgrading from the two `.conf` files of earlier releases creates this file
 from them; edited old files are kept as `*.conf.migrated` (dpkg deletes
 unedited ones).
+
+The fan settings of earlier releases are not converted: an upgrade replaces
+the fan curves (and an old `[fan]` table) with the new defaults. If you had
+tuned the curves, set the targets and ramps again.
 
 ## Requirements
 
@@ -115,7 +119,8 @@ sudo apt install ./ugreen-dxp-pve-truenas_latest.deb
 The package installs the helpers to `/usr/bin`, the systemd units to
 `/lib/systemd/system`, creates `/etc/ugreen-dxp-pve-truenas.toml` if it does
 not exist, reloads systemd, and enables the fan and ZFS services. An existing
-`/etc/ugreen-dxp-pve-truenas.toml` is never overwritten. The services query
+`/etc/ugreen-dxp-pve-truenas.toml` is kept: an upgrade only adds new tables and
+replaces an old-style `[fan]`. The services query
 the VM with ID `100` unless you set another one.
 
 If your TrueNAS Scale VM has a different ID, set `vmid` after installing:
@@ -147,7 +152,7 @@ ls -l /sys/class/hwmon/hwmon*/pwm* /sys/class/hwmon/hwmon*/fan*_input
 If the service logs `Permission denied` for a `pwmN` path, first verify that
 the selected hwmon directory is the ITE controller, for example `it8613`, and
 that the matching `pwmN_enable` file exists. Try a different `pwm_channel`,
-usually `2` or `3`, before pinning absolute `hwmonN` paths.
+usually `2` or `3`.
 
 ## LED showcase
 
