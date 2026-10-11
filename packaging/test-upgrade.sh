@@ -61,8 +61,15 @@ echo "installed: $(dpkg-query -W -f='${Package} ${Version}  ' 'ugreen-dxp-pve-*'
 # Edit the configuration like an admin would, in the format the installed release uses.
 export EXPECTED_MIN_PWM=80
 if [[ -e /etc/ugreen-dxp-pve-truenas.toml ]]; then
-  if grep -q '^hdd_curve' /etc/ugreen-dxp-pve-truenas.toml; then
-    EXPECTED_MIN_PWM=90  # an old-style [fan] is replaced by the defaults
+  # An old-style [fan] (any key the current format lacks) is replaced by the defaults.
+  if python3 - /etc/ugreen-dxp-pve-truenas.toml <<'PY'
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    fan = tomllib.load(f).get("fan", {})
+sys.exit(not set(fan) - {"poll_interval", "min_pwm", "max_pwm", "failsafe_pwm", "pwm_channel"})
+PY
+  then
+    EXPECTED_MIN_PWM=90
   fi
   sed -i -e 's/^#* *vmid = .*/vmid = 105/' -e 's/^min_pwm = .*/min_pwm = 80/' \
     /etc/ugreen-dxp-pve-truenas.toml
@@ -102,7 +109,7 @@ assert dict(leds.netdev)["device_name"] == "vmbr1", leds.netdev
 truenas = load()
 assert truenas.vmid == "105", truenas
 assert truenas.fan.min_pwm == int(os.environ["EXPECTED_MIN_PWM"]), truenas.fan
-assert {"TEMP_WARNING", "TEMP_ALERT"} <= set(truenas.power), truenas.power
+assert {"TEMP_WARNING", "TEMP_ALERT"} <= set(truenas.power_looks), truenas.power_looks
 EOF
   if [[ "${old_truenas_confs}" == true ]]; then
     for conf in /etc/ugreen-dxp-pve-truenas-fan.conf /etc/ugreen-dxp-pve-truenas-zfs.conf; do
