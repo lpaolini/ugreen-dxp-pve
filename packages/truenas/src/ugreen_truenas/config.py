@@ -48,7 +48,7 @@ class Cpu:
 class Zfs:
     poll_interval: float = 30
     alert_threshold: float = 0.75
-    bays: tuple = tuple(f"/dev/disk/by-path/pci-0000:00:10.0-ata-{n}" for n in range(1, 5))
+    bays: tuple = ()  # disk path inside TrueNAS per bay; empty: detect the bays
 
 
 @dataclass(frozen=True)

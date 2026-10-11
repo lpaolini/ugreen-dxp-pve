@@ -33,6 +33,8 @@ ZFS_KEYS = {  # old variable -> ([zfs] key, converter)
     "ALERT_THRESHOLD": ("alert_threshold", float),
 }
 BAY_KEYS = tuple(f"BAY_{n}_PATH" for n in range(1, 5))
+# The bays of the old files by default; the bays are now detected instead.
+OLD_BAYS = [f"/dev/disk/by-path/pci-0000:00:10.0-ata-{n}" for n in range(1, 5)]
 SHARED_KEYS = ("VMID", "DEBUG")
 # Settings of older releases that no longer mean anything: dropped silently.
 OBSOLETE_KEYS = ("POWER_LED_HELPER", "POWER_LED_FAULT_NAME", "LEDS_OFF_ON_EXIT",
@@ -88,10 +90,10 @@ def convert(template, fan, zfs):
     for name, (key, converter) in ZFS_KEYS.items():
         if zfs.get(name):
             put("zfs", name, key, zfs[name], converter)
-    bays = list(tomllib.loads(template)["zfs"]["bays"])
+    bays = OLD_BAYS.copy()
     wanted = {index: zfs[name] for index, name in enumerate(BAY_KEYS) if zfs.get(name)}
-    if wanted:
-        combined = [wanted.get(index, path) for index, path in enumerate(bays)]
+    combined = [wanted.get(index, path) for index, path in enumerate(bays)]
+    if combined != OLD_BAYS:
         mark = len(messages)
         if not apply("BAY_n_PATH", wanted, "zfs", "bays", combined):
             del messages[mark:]  # retry bay by bay to keep the usable ones

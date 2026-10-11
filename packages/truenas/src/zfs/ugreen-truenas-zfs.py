@@ -5,7 +5,10 @@
 # on the host, which shows what is published under /run/ugreen-dxp-leds/truenas-zfs.
 import argparse
 import dataclasses
+import glob
 import json
+import os
+import re
 import shlex
 import signal
 import subprocess
@@ -20,11 +23,13 @@ from ugreen_leds.tree import publish, runtime_dir  # noqa: E402
 from ugreen_truenas.config import CONFIG_PATH, ConfigError, load  # noqa: E402
 
 TAG = "ugreen-truenas-zfs"
+LED_ROOT = "/sys/class/leds"
 # Settings, set from the configuration by configure().
 VMID = ""
 DEBUG = False
 POLL_INTERVAL = 30
-BAYS = {}  # bay number ("1", "2", ...) -> disk path inside the guest
+BAY_PATHS = {}  # bay number ("1", "2", ...) -> disk path inside the guest; empty: detect
+BAYS = []  # the bay numbers driven now: see refresh_bays()
 ALERT_THRESHOLD = 0.75  # pool fill ratio at which ONLINE becomes ONLINE_ALERT
 DISK_LOOKS = {}  # ZFS LED state -> Look
 LAST_COLOR = {}  # bay -> colour of the last look published for it
@@ -53,26 +58,81 @@ def dbg(msg):
 
 def configure(config):
     """Apply a loaded configuration to the module settings."""
-    global VMID, DEBUG, POLL_INTERVAL, BAYS, ALERT_THRESHOLD, DISK_LOOKS
+    global VMID, DEBUG, POLL_INTERVAL, BAY_PATHS, ALERT_THRESHOLD, DISK_LOOKS
     VMID = config.vmid
     DEBUG = config.debug
     POLL_INTERVAL = config.zfs.poll_interval
-    BAYS = {str(n): path for n, path in enumerate(config.zfs.bays, 1)}
+    BAY_PATHS = {str(n): path for n, path in enumerate(config.zfs.bays, 1)}
     ALERT_THRESHOLD = config.zfs.alert_threshold
     DISK_LOOKS = config.disk_looks
     LAST_COLOR.clear()
+    refresh_bays()
+
+
+def refresh_bays():
+    """Set BAYS: the configured bays, else one per disk LED on the host."""
+    global BAYS
+    if BAY_PATHS:
+        BAYS = list(BAY_PATHS)
+        return
+    numbers = []
+    for path in glob.glob(os.path.join(LED_ROOT, "ugreen:white:disk*")):
+        match = re.fullmatch(r"ugreen:white:disk([0-9]+)", os.path.basename(path))
+        if match:
+            numbers.append(int(match[1]))
+    BAYS = [str(n) for n in sorted(numbers)]
+
+
+def _power_state_cmd(device):
+    """Shell command printing the power state of `device` (a shell word), or nothing."""
+    return (
+        "if command -v hdparm >/dev/null 2>&1; then "
+        f"hdparm -C {device} 2>/dev/null | "
+        "awk -F: '/drive state is/ {gsub(/^[ \\t]+|[ \\t]+$/, \"\", $2); print $2}'"
+        "; fi"
+    )
 
 
 def _guest_spindown_arg(bay, path):
-    quoted = shlex.quote(path)
-    return (
-        f"--arg spindown{bay} \"$("
-        "if command -v hdparm >/dev/null 2>&1; then "
-        f"hdparm -C {quoted} 2>/dev/null | "
-        "awk -F: '/drive state is/ {gsub(/^[ \\t]+|[ \\t]+$/, \"\", $2); print $2}'"
-        "; fi"
-        ")\""
-    )
+    return f"--arg spindown{bay} \"$({_power_state_cmd(shlex.quote(path))})\""
+
+
+# Lists the disks on SATA ports inside the guest, one per line:
+# by-path link name, device name, model, power state; tab-separated.
+_ATA_DISKS_CMD = (
+    "seen=; for link in /dev/disk/by-path/*-ata-*; do "
+    "case \"$link\" in *-part*) continue;; esac; "
+    "dev=$(readlink -e \"$link\") || continue; name=${dev##*/}; "
+    "case \" $seen \" in *\" $name \"*) continue;; esac; seen=\"$seen $name\"; "
+    "model=$(cat \"/sys/block/$name/device/model\" 2>/dev/null); "
+    "state=$(" + _power_state_cmd('"$dev"') + "); "
+    "printf '%s\\t%s\\t%s\\t%s\\n' \"${link##*/}\" \"$name\" \"$model\" \"$state\"; "
+    "done"
+)
+
+
+def detect_bays(ata):
+    """({bay: device}, {bay: power state}) from the guest's SATA disk list.
+
+    Bay N is port N of the one SATA controller with real disks; QEMU's own
+    virtual disks are skipped. Raises ValueError when several controllers have disks.
+    """
+    controllers = {}
+    for line in ata.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 4 or fields[2].strip().startswith("QEMU"):
+            continue
+        link, device, _model, state = fields
+        controller, sep, port = link.rpartition("-ata-")
+        port = port.split(".")[0]  # newer udev also names port 1 "ata-1.0"
+        if sep and port.isdigit():
+            controllers.setdefault(controller, {})[str(int(port))] = (device, state)
+    if len(controllers) > 1:
+        raise ValueError(f"disks on several SATA controllers ({', '.join(sorted(controllers))}); "
+                         "set [zfs] bays")
+    ports = next(iter(controllers.values()), {})
+    return ({bay: device for bay, (device, _) in ports.items()},
+            {bay: state for bay, (_, state) in ports.items()})
 
 
 def set_led(n, state_key):
@@ -107,12 +167,17 @@ def set_all_leds(state_key):
 
 def build_guest_cmd(bays):
     """Shell command the guest agent runs: ship lsblk, all zpool status, and each bay's
-    current disk name and power state back as one JSON object."""
+    current disk name and power state back as one JSON object. Without configured
+    bays it ships the SATA disk list instead, for detect_bays()."""
     lines = [
         "jq -n",
         "--argjson lsblk \"$(lsblk -Jlo NAME,PARTUUID,TYPE,PKNAME 2>/dev/null || echo '{}')\"",
         "--argjson zpool \"$(zpool status -pj 2>/dev/null || echo '{}')\"",
     ]
+    if not bays:
+        lines.append(f"--arg ata \"$({_ATA_DISKS_CMD})\"")
+        lines.append("'{lsblk:$lsblk, zpool:$zpool, ata:$ata}'")
+        return " ".join(lines)
     for bay, path in bays.items():
         lines.append(
             f"--arg bay{bay} \"$(readlink -e {shlex.quote(path)} 2>/dev/null | sed 's|.*/||')\""
@@ -142,7 +207,7 @@ def fetch_guest_report():
     try:
         proc = subprocess.run(
             ["qm", "guest", "exec", VMID, "--timeout", "20",
-             "--", "/bin/sh", "-c", build_guest_cmd(BAYS)],
+             "--", "/bin/sh", "-c", build_guest_cmd(BAY_PATHS)],
             capture_output=True, text=True, check=True,
         )
         payload = json.loads(proc.stdout or "{}")
@@ -164,17 +229,22 @@ def fetch_guest_report():
         return None
 
     try:
-        # return json.loads(out)
         report = json.loads(out)
-        bays = report.get("bays", {})
-        spindown = report.get("spindown", {})
-        lsblk = report.get("lsblk", {})
-        zpool = report.get("zpool", {})
-        return bays, spindown, lsblk, zpool
     except json.JSONDecodeError as e:
         log(f"guest JSON parse failed: {e}; raw={out[:200]!r}")
         set_all_leds("ERROR")
         return None
+    if BAY_PATHS:
+        bays, spindown = report.get("bays", {}), report.get("spindown", {})
+    else:
+        try:
+            bays, spindown = detect_bays(report.get("ata", ""))
+        except ValueError as e:
+            log(str(e))
+            set_all_leds("ERROR")
+            return None
+        dbg(f"Detected bays: {bays}")
+    return bays, spindown, report.get("lsblk", {}), report.get("zpool", {})
 
 
 def build_device_to_partuuids(lsblk_obj):
@@ -310,6 +380,7 @@ def update_leds(bays, spindown, device_to_partuuids, vdev_state, resilvering):
 
 def control_once():
     dbg(f"Starting: VMID={VMID}")
+    refresh_bays()  # disk LEDs can appear after the service started
     flash_checking_pattern()
 
     report = fetch_guest_report()

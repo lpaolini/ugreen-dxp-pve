@@ -176,6 +176,8 @@ ${PACKAGE} (${VERSION}) stable; urgency=medium
     [disk] alert_temperature. The hwmon device, its paths and the PWM enable
     values are no longer configurable. Old fan curves are replaced by the
     defaults on upgrade.
+  * Detect the bays: bay N shows the disk on port N of the SATA controller
+    passed through to TrueNAS, for every disk LED. [zfs] bays is optional.
 
  -- Luca Paolini <lookap@gmail.com>  Sat, 10 Oct 2026 12:00:00 +0200
 CHANGELOG

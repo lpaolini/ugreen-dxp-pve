@@ -40,10 +40,10 @@ pwm_channel = 3
 poll_interval = 30
 # A healthy disk in a pool at least this full shows ONLINE_ALERT.
 alert_threshold = 0.75
-# The disk path inside TrueNAS of each bay, bay 1 first; bay N drives LED diskN.
-# These match the DXP4800 PRO backplane: check with `ls -l /dev/disk/by-path/`
-# inside TrueNAS.
-bays = ["/dev/disk/by-path/pci-0000:00:10.0-ata-1", "/dev/disk/by-path/pci-0000:00:10.0-ata-2", "/dev/disk/by-path/pci-0000:00:10.0-ata-3", "/dev/disk/by-path/pci-0000:00:10.0-ata-4"]
+# Bay N shows the disk on port N of the SATA controller passed through to
+# TrueNAS, for every bay with a disk LED. Set bays only if that does not fit:
+# the disk path inside TrueNAS of each bay, bay 1 first (`ls -l /dev/disk/by-path/`).
+# bays = ["/dev/disk/by-path/pci-0000:00:10.0-ata-1", "/dev/disk/by-path/pci-0000:00:10.0-ata-2"]
 
 # LED looks. Colours are "#rrggbb"; effects are "none", "blink:ON:OFF" or
 # "breath:ON:OFF" (milliseconds). Among all services publishing for an LED,

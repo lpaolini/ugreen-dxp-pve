@@ -29,8 +29,8 @@ There are two services:
   from `warning_temperature` (40 °C), red from `alert_temperature` (43 °C),
   where the fan also runs at full speed.
 - `ugreen-truenas-zfs.service` polls `lsblk` and `zpool status -pj` inside the
-  TrueNAS VM, maps the VM's disks back to the four physical UGREEN bays, and
-  publishes a look for LEDs `disk1` through `disk4` to show ZFS
+  TrueNAS VM, maps the VM's disks back to the physical UGREEN bays, and
+  publishes a look for each disk LED (`disk1`, `disk2`, ...) to show ZFS
   health, spindown/standby state, missing disks, and resilvering for any pool
   associated with those bays.
 
@@ -39,16 +39,20 @@ Both services poll every 30 seconds. Their configuration lives in one file,
 `/usr/share/ugreen-dxp-pve-truenas/ugreen-dxp-pve-truenas.toml`):
 
 - `vmid`: the Proxmox VM ID of your TrueNAS Scale VM, `100` by default.
-- `[fan]`: poll interval, fan speed limits (`min_pwm`, `max_pwm`, PWM 0-255)
-  and the failsafe PWM. The fan helper drives `pwmN` (N = `pwm_channel`) of the
-  ITE chip exposed by the it87 driver, such as `it8613`.
 - `[disk]` and `[cpu]`: a `target_temperature` and a `ramp` for the hottest
   disk and the host CPU. The fan stays at `min_pwm` up to the target and speeds
   up by `ramp` PWM for every °C above it, following whichever asks for more.
   In `[disk]`, the power LED turns orange at `warning_temperature`; at
   `alert_temperature` it turns red and the fan runs at `max_pwm`.
-- `[zfs]`: poll interval, `alert_threshold` and `bays`, the disk path inside
-  TrueNAS of each front-panel bay.
+- `[fan]`: poll interval, fan speed limits (`min_pwm`, `max_pwm`, PWM 0-255)
+  and the failsafe PWM. The fan helper drives `pwmN` (N = `pwm_channel`) of the
+  ITE chip exposed by the it87 driver, such as `it8613`.
+- `[zfs]`: poll interval and `alert_threshold`. Bay N shows the disk on port N
+  of the SATA controller passed through to TrueNAS (the `-ata-N` links in
+  `/dev/disk/by-path/` inside TrueNAS), for every bay with a disk LED; QEMU's
+  own virtual disks are ignored. If your ports do not follow the bay order, or
+  disks sit on more than one passed-through controller, set `bays`: the disk
+  path inside TrueNAS of each bay, bay 1 first.
 - `[power.*]` and `[disk.*]` (such as `[disk.ONLINE]`): how each state looks
   on the LEDs (see the tables below).
 
