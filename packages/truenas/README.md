@@ -26,7 +26,8 @@ There are two services:
   fails, it uses the configured failsafe PWM. If the fan PWM path cannot be
   controlled, it publishes a blinking red look for the power LED until a later
   PWM write succeeds. It also shows the hottest disk on the power LED: orange
-  from `temp_warning` (40 °C), red from `temp_alert` (43 °C).
+  from `warning_temperature` (40 °C), red from `alert_temperature` (43 °C),
+  where the fan also runs at full speed.
 - `ugreen-truenas-zfs.service` polls `lsblk` and `zpool status -pj` inside the
   TrueNAS VM, maps the VM's disks back to the four physical UGREEN bays, and
   publishes a look for LEDs `disk1` through `disk4` to show ZFS
@@ -38,17 +39,18 @@ Both services poll every 30 seconds. Their configuration lives in one file,
 `/usr/share/ugreen-dxp-pve-truenas/ugreen-dxp-pve-truenas.toml`):
 
 - `vmid`: the Proxmox VM ID of your TrueNAS Scale VM, `100` by default.
-- `[fan]`: poll interval, fan speed limits (`min_pwm`, `max_pwm`, PWM 0-255),
-  and for the hottest disk and the host CPU a target temperature and a ramp:
-  the fan stays at `min_pwm` up to the target and speeds up by `ramp` PWM for
-  every °C above it. The fan helper drives `pwmN` (N = `pwm_channel`) of the
-  ITE chip exposed by the it87 driver, such as `it8613`. `temp_warning` and
-  `temp_alert` set the disk temperatures at which the power LED turns orange
-  and red.
+- `[fan]`: poll interval, fan speed limits (`min_pwm`, `max_pwm`, PWM 0-255)
+  and the failsafe PWM. The fan helper drives `pwmN` (N = `pwm_channel`) of the
+  ITE chip exposed by the it87 driver, such as `it8613`.
+- `[disk]` and `[cpu]`: a `target_temperature` and a `ramp` for the hottest
+  disk and the host CPU. The fan stays at `min_pwm` up to the target and speeds
+  up by `ramp` PWM for every °C above it, following whichever asks for more.
+  In `[disk]`, the power LED turns orange at `warning_temperature`; at
+  `alert_temperature` it turns red and the fan runs at `max_pwm`.
 - `[zfs]`: poll interval, `alert_threshold` and `bays`, the disk path inside
   TrueNAS of each front-panel bay.
-- `[power.*]` and `[disk.*]`: how each state looks on the LEDs (see the
-  tables below).
+- `[power.*]` and `[disk.*]` (such as `[disk.ONLINE]`): how each state looks
+  on the LEDs (see the tables below).
 
 Upgrading from the two `.conf` files of earlier releases creates this file
 from them; edited old files are kept as `*.conf.migrated` (dpkg deletes
@@ -56,7 +58,8 @@ unedited ones).
 
 The fan settings of earlier releases are not converted: an upgrade replaces
 the fan curves (and an old `[fan]` table) with the new defaults. If you had
-tuned the curves, set the targets and ramps again.
+tuned the curves or the temperature thresholds, set them again in `[disk]` and
+`[cpu]`.
 
 ## Requirements
 
@@ -184,9 +187,9 @@ LED. A fan-control fault wins over it.
 
 | Hottest disk | Look | Priority | Color | Effect |
 | --- | --- | --- | --- | --- |
-| below `temp_warning`, or no reading | default (`NORMAL`) | – | `#004010` | `none` |
-| at or above `temp_warning` (40 °C) | `TEMP_WARNING` | 30 | `#ff8000` | `none` |
-| at or above `temp_alert` (43 °C) | `TEMP_ALERT` | 20 | `#ff0000` | `none` |
+| below `warning_temperature`, or no reading | default (`NORMAL`) | – | `#004010` | `none` |
+| at or above `warning_temperature` (40 °C) | `TEMP_WARNING` | 30 | `#ff8000` | `none` |
+| at or above `alert_temperature` (43 °C) | `TEMP_ALERT` | 20 | `#ff0000` | `none` |
 | the fan cannot be controlled | `FAULT` | 10 | `#ff0000` | `blink:500:500` |
 
 ## Build locally

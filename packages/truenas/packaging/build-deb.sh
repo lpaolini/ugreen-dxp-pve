@@ -170,7 +170,12 @@ ${PACKAGE} (${VERSION}) stable; urgency=medium
     created from the old .conf files on upgrade.
   * Publish LED looks under /run/ugreen-dxp-leds/truenas-zfs and truenas-fan.
   * Show the hottest disk temperature on the power LED: orange from
-    [fan] temp_warning, red from temp_alert.
+    [disk] warning_temperature, red from alert_temperature.
+  * Drive the fan from a target temperature and a ramp for the disks and the
+    CPU ([disk] and [cpu]) instead of fan curves, and at full speed from
+    [disk] alert_temperature. The hwmon device, its paths and the PWM enable
+    values are no longer configurable. Old fan curves are replaced by the
+    defaults on upgrade.
 
  -- Luca Paolini <lookap@gmail.com>  Sat, 10 Oct 2026 12:00:00 +0200
 CHANGELOG
