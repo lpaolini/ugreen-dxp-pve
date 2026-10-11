@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Load and validate /etc/ugreen-dxp-pve-truenas.toml."""
 import math
-import re
 import tomllib
 from dataclasses import dataclass, fields
 
@@ -23,25 +22,17 @@ class ConfigError(Exception):
 @dataclass(frozen=True)
 class Fan:
     poll_interval: float = 30
-    hdd_curve: tuple = ((30, 90), (35, 120), (40, 175), (43, 220), (45, 255))
-    cpu_curve: tuple = ((45, 90), (55, 115), (65, 150), (75, 190), (85, 225), (95, 255))
     min_pwm: int = 90
     max_pwm: int = 255
+    # The fan stays at min_pwm up to a target (°C) and adds `ramp` PWM per °C above it.
+    disk_target_temperature: float = 35
+    disk_ramp: int = 17
+    cpu_target_temperature: float = 45
+    cpu_ramp: int = 3
     failsafe_pwm: int = 255
-    manual_pwm_enable_value: int = 1
-    auto_pwm_enable_value: int = 2
-    reset_pwm_on_exit: bool = True
-    auto_discover_hwmon: bool = True
-    hwmon_regex: str = r"^it[0-9]+$"
     pwm_channel: int = 3
-    temp_chip_regex: str = r"(?i)(drivetemp|nvme|ata|scsi|sas|sat|disk|hdd|ssd)"
     temp_warning: float = 40
     temp_alert: float = 43
-    hwmon_name: str = ""
-    pwm_path: str = ""
-    pwm_enable_path: str = ""
-    input_path: str = ""
-    cpu_temp_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -99,36 +90,6 @@ def _bool(value):
     return value
 
 
-def _str(value):
-    if not isinstance(value, str):
-        raise ValueError(f"must be a string, got {value!r}")
-    return value
-
-
-def _regex(value):
-    try:
-        re.compile(_str(value))
-    except re.error as e:
-        raise ValueError(f"invalid regular expression: {e}") from None
-    return value
-
-
-def _curve(value):
-    """[[temp, pwm], ...] -> ((temp, pwm), ...) sorted by temperature."""
-    if not isinstance(value, list) or len(value) < 2:
-        raise ValueError("must list at least two [temperature, pwm] points")
-    points = []
-    for point in value:
-        if not (isinstance(point, list) and len(point) == 2 and _is_number(point[0])
-                and math.isfinite(point[0])):
-            raise ValueError(f"invalid point {point!r}: expected [temperature, pwm]")
-        points.append((point[0], _int(0, 255)(point[1])))
-    points.sort(key=lambda point: point[0])
-    if len({temp for temp, _ in points}) != len(points):
-        raise ValueError("temperatures must be distinct")
-    return tuple(points)
-
-
 def _bays(value):
     if not (isinstance(value, list) and 1 <= len(value) <= MAX_BAYS
             and all(isinstance(path, str) and path.startswith("/") for path in value)
@@ -138,13 +99,11 @@ def _bays(value):
 
 
 FAN_CHECKS = {
-    "poll_interval": _positive, "hdd_curve": _curve, "cpu_curve": _curve,
-    "min_pwm": _int(0, 255), "max_pwm": _int(0, 255), "failsafe_pwm": _int(0, 255),
-    "manual_pwm_enable_value": _int(0), "auto_pwm_enable_value": _int(0),
-    "reset_pwm_on_exit": _bool, "auto_discover_hwmon": _bool, "hwmon_regex": _regex,
-    "pwm_channel": _int(1), "temp_chip_regex": _regex, "temp_warning": _temperature, "temp_alert": _temperature,
-    "hwmon_name": _str, "pwm_path": _str,
-    "pwm_enable_path": _str, "input_path": _str, "cpu_temp_path": _str,
+    "poll_interval": _positive, "min_pwm": _int(0, 255), "max_pwm": _int(0, 255),
+    "disk_target_temperature": _temperature, "disk_ramp": _int(1),
+    "cpu_target_temperature": _temperature, "cpu_ramp": _int(1),
+    "failsafe_pwm": _int(0, 255), "pwm_channel": _int(1),
+    "temp_warning": _temperature, "temp_alert": _temperature,
 }
 ZFS_CHECKS = {"poll_interval": _positive, "alert_threshold": _fraction, "bays": _bays}
 assert set(FAN_CHECKS) == {f.name for f in fields(Fan)}

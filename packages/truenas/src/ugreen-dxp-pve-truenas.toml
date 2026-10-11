@@ -12,36 +12,24 @@ debug = false
 [fan]
 # Seconds between polls.
 poll_interval = 30
-# [temperature °C, PWM 0-255] points. The fan runs at the higher PWM of the
-# hottest disk on hdd_curve and the host CPU on cpu_curve.
-hdd_curve = [[30, 90], [35, 120], [40, 175], [43, 220], [45, 255]]
-cpu_curve = [[45, 90], [55, 115], [65, 150], [75, 190], [85, 225], [95, 255]]
+# Fan speed limits (PWM 0-255), for noise control.
 min_pwm = 90
 max_pwm = 255
-# PWM used when temperatures cannot be read.
+# The fan stays at min_pwm up to the target temperature (°C) and speeds up by
+# `ramp` PWM for every °C above it, up to max_pwm. It follows whichever of the
+# hottest disk and the host CPU asks for more.
+disk_target_temperature = 35
+disk_ramp = 17
+cpu_target_temperature = 45
+cpu_ramp = 3
+# PWM used when temperatures cannot be read, e.g. while TrueNAS is stopped.
 failsafe_pwm = 255
-manual_pwm_enable_value = 1
-auto_pwm_enable_value = 2
-# Hand the fan back to the chip's automatic control when the service stops.
-reset_pwm_on_exit = true
-# Find /sys/class/hwmon/hwmon* by its name instead of its number, which can
-# change between boots. DXP4800-class systems expose the wired fans as pwm2
-# and pwm3 of the it87 chip.
-auto_discover_hwmon = true
-hwmon_regex = "^it[0-9]+$"
+# The fan header the case fan is wired to: pwmN of the it87 chip (usually 2 or 3).
 pwm_channel = 3
-# Only TrueNAS sensor chips matching this count as disk temperatures.
-temp_chip_regex = "(?i)(drivetemp|nvme|ata|scsi|sas|sat|disk|hdd|ssd)"
 # The power LED turns orange when the hottest disk reaches temp_warning and
 # red at temp_alert (°C).
 temp_warning = 40
 temp_alert = 43
-# Set these only to pin exact sysfs paths:
-# hwmon_name = "it8613"
-# pwm_path = "/sys/class/hwmon/hwmon3/pwm3"
-# pwm_enable_path = "/sys/class/hwmon/hwmon3/pwm3_enable"
-# input_path = "/sys/class/hwmon/hwmon3/fan3_input"
-# cpu_temp_path = "/sys/class/hwmon/hwmon4/temp1_input"
 
 [zfs]
 # Seconds between polls.

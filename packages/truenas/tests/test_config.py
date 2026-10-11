@@ -35,6 +35,13 @@ class TemplateTest(unittest.TestCase):
         priorities = [look.priority for look in config.disk.values()]
         self.assertEqual(priorities, sorted(priorities))  # most severe first
 
+    def test_template_fan(self):
+        fan = load(TEMPLATE).fan
+        self.assertEqual((fan.min_pwm, fan.max_pwm, fan.failsafe_pwm), (90, 255, 255))
+        self.assertEqual((fan.disk_target_temperature, fan.disk_ramp), (35, 17))
+        self.assertEqual((fan.cpu_target_temperature, fan.cpu_ramp), (45, 3))
+        self.assertEqual(fan.pwm_channel, 3)
+
 
 class BuildTest(unittest.TestCase):
     def build(self, change):
@@ -45,12 +52,13 @@ class BuildTest(unittest.TestCase):
     def test_vmid_and_settings(self):
         def change(data):
             data["vmid"] = 105
-            data["fan"]["hdd_curve"] = [[45, 255], [30, 80]]
+            data["fan"]["disk_ramp"] = 20
+            data["fan"]["cpu_target_temperature"] = 50.5
             data["zfs"]["bays"] = ["/a", "/b"]
 
         config = self.build(change)
         self.assertEqual(config.vmid, "105")
-        self.assertEqual(config.fan.hdd_curve, ((30, 80), (45, 255)))
+        self.assertEqual((config.fan.disk_ramp, config.fan.cpu_target_temperature), (20, 50.5))
         self.assertEqual(config.zfs.bays, ("/a", "/b"))
 
     def test_missing_settings_use_the_defaults(self):
@@ -88,9 +96,7 @@ class BuildTest(unittest.TestCase):
             "unknown fan key": (setter(("fan", "pwm"), 1), "fan: unknown keys pwm"),
             "rgb colour": (setter(("disk", "ONLINE", "color"), "0 40 0"), "disk.ONLINE: color must be"),
             "unknown look key": (setter(("disk", "ONLINE", "brightness"), 1), "unknown keys brightness"),
-            "short curve": (setter(("fan", "hdd_curve"), [[30, 90]]), "fan.hdd_curve"),
             "pwm out of range": (setter(("fan", "min_pwm"), 300), "fan.min_pwm"),
-            "bad regex": (setter(("fan", "hwmon_regex"), "("), "fan.hwmon_regex"),
             "string vmid": (setter(("vmid",), "100"), "vmid"),
             "zero vmid": (setter(("vmid",), 0), "vmid"),
             "no bays": (setter(("zfs", "bays"), []), "zfs.bays"),
@@ -98,15 +104,20 @@ class BuildTest(unittest.TestCase):
             "relative bay": (setter(("zfs", "bays"), ["dev/x"]), "zfs.bays"),
             "threshold above 1": (setter(("zfs", "alert_threshold"), 1.5), "zfs.alert_threshold"),
             "zero interval": (setter(("zfs", "poll_interval"), 0), "zfs.poll_interval"),
-            "duplicate curve temperatures": (setter(("fan", "hdd_curve"), [[30, 90], [30, 120]]), "temperatures must be distinct"),
-            "nan curve temperature": (setter(("fan", "cpu_curve"), [[float("nan"), 90], [30, 120]]), "fan.cpu_curve"),
-            "inf curve temperature": (setter(("fan", "cpu_curve"), [[float("inf"), 90], [30, 120]]), "fan.cpu_curve"),
             "nan fan interval": (setter(("fan", "poll_interval"), float("nan")), "fan.poll_interval"),
             "inf zfs interval": (setter(("zfs", "poll_interval"), float("inf")), "zfs.poll_interval"),
             "duplicate bays": (setter(("zfs", "bays"), ["/a", "/a"]), "zfs.bays"),
             "min above max pwm": (setter(("fan", "max_pwm"), 50), "fan.min_pwm must not exceed fan.max_pwm"),
             "bool pwm": (setter(("fan", "min_pwm"), True), "fan.min_pwm"),
             "debug string": (setter(("debug",), "yes"), "debug"),
+            "zero ramp": (setter(("fan", "disk_ramp"), 0), "fan.disk_ramp"),
+            "fractional ramp": (setter(("fan", "cpu_ramp"), 3.3), "fan.cpu_ramp"),
+            "bool ramp": (setter(("fan", "cpu_ramp"), True), "fan.cpu_ramp"),
+            "nan target": (setter(("fan", "disk_target_temperature"), float("nan")), "fan.disk_target_temperature"),
+            "string target": (setter(("fan", "cpu_target_temperature"), "45"), "fan.cpu_target_temperature"),
+            "zero channel": (setter(("fan", "pwm_channel"), 0), "fan.pwm_channel"),
+            "retired curve": (setter(("fan", "hdd_curve"), [[30, 90], [45, 255]]), "fan: unknown keys hdd_curve"),
+            "retired regex": (setter(("fan", "temp_chip_regex"), "x"), "fan: unknown keys temp_chip_regex"),
         }
         for label, (change, message) in cases.items():
             with self.subTest(label), self.assertRaisesRegex(ConfigError, message):

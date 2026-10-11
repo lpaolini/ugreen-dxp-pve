@@ -22,18 +22,22 @@ from ugreen_leds.tree import clear, publish, runtime_dir, runtime_dirs  # noqa: 
 from ugreen_truenas.config import CONFIG_PATH, ConfigError, Fan, load  # noqa: E402
 
 TAG = "ugreen-truenas-fan"
+HWMON_ROOT = "/sys/class/hwmon"
+HWMON_NAME_REGEX = r"^it[0-9]+$"  # the ITE chip driven by it87, e.g. it8613
+MANUAL_PWM_ENABLE_VALUE = "1"  # pwmN_enable values of the hwmon interface
+AUTO_PWM_ENABLE_VALUE = "2"
+# The sensors -j chips inside TrueNAS that report disk temperatures.
+TEMP_CHIP_REGEX = r"(?i)(drivetemp|nvme|ata|scsi|sas|sat|disk|hdd|ssd)"
 # Settings, set from the configuration by configure().
 VMID = ""
 DEBUG = False
-FAN_HWMON_NAME = FAN_HWMON_REGEX = FAN_PWM_CHANNEL = ""
-AUTO_DISCOVER_HWMON = False
-FAN_PWM_PATH = FAN_PWM_ENABLE_PATH = FAN_INPUT_PATH = CPU_TEMP_PATH = ""
-HDD_CURVE = CPU_CURVE = ()  # ((temperature, pwm), ...) sorted by temperature
+FAN_PWM_CHANNEL = ""
+DISK_TARGET = CPU_TARGET = 0  # °C: the fan stays at MIN_PWM up to these
+DISK_RAMP = CPU_RAMP = 0  # PWM per °C above the target
 MIN_PWM = MAX_PWM = FAILSAFE_PWM = 255
-MANUAL_PWM_ENABLE_VALUE = AUTO_PWM_ENABLE_VALUE = ""
 POLL_INTERVAL = 30
-RESET_PWM_ON_EXIT = True
-TEMP_CHIP_REGEX = ""
+# Found by resolve_host_hwmon_paths().
+FAN_PWM_PATH = FAN_PWM_ENABLE_PATH = FAN_INPUT_PATH = CPU_TEMP_PATH = ""
 POWER_LED_FAULT_LOOK = None  # published for the power LED while the fan cannot be controlled
 TEMP_WARNING = TEMP_ALERT = 0  # °C, hottest disk
 POWER_LED_TEMP_LOOKS = {}  # "TEMP_WARNING" / "TEMP_ALERT" -> Look
@@ -75,31 +79,19 @@ def configure(config):
 
 def configure_fan(fan):
     """Apply the [fan] settings to the module settings."""
-    global FAN_HWMON_NAME, FAN_HWMON_REGEX, FAN_PWM_CHANNEL, AUTO_DISCOVER_HWMON
+    global FAN_PWM_CHANNEL, DISK_TARGET, DISK_RAMP, CPU_TARGET, CPU_RAMP
+    global MIN_PWM, MAX_PWM, FAILSAFE_PWM, POLL_INTERVAL, TEMP_WARNING, TEMP_ALERT
     global FAN_PWM_PATH, FAN_PWM_ENABLE_PATH, FAN_INPUT_PATH, CPU_TEMP_PATH
-    global HDD_CURVE, CPU_CURVE, MIN_PWM, MAX_PWM, FAILSAFE_PWM
-    global MANUAL_PWM_ENABLE_VALUE, AUTO_PWM_ENABLE_VALUE, POLL_INTERVAL, RESET_PWM_ON_EXIT
-    global TEMP_CHIP_REGEX, TEMP_WARNING, TEMP_ALERT
-    FAN_HWMON_NAME = fan.hwmon_name
-    FAN_HWMON_REGEX = fan.hwmon_regex
     FAN_PWM_CHANNEL = str(fan.pwm_channel)
-    AUTO_DISCOVER_HWMON = fan.auto_discover_hwmon
-    FAN_PWM_PATH = fan.pwm_path
-    FAN_PWM_ENABLE_PATH = fan.pwm_enable_path
-    FAN_INPUT_PATH = fan.input_path
-    CPU_TEMP_PATH = fan.cpu_temp_path
-    HDD_CURVE = fan.hdd_curve
-    CPU_CURVE = fan.cpu_curve
+    DISK_TARGET, DISK_RAMP = fan.disk_target_temperature, fan.disk_ramp
+    CPU_TARGET, CPU_RAMP = fan.cpu_target_temperature, fan.cpu_ramp
     MIN_PWM = fan.min_pwm
     MAX_PWM = fan.max_pwm
     FAILSAFE_PWM = fan.failsafe_pwm
-    MANUAL_PWM_ENABLE_VALUE = str(fan.manual_pwm_enable_value)
-    AUTO_PWM_ENABLE_VALUE = str(fan.auto_pwm_enable_value)
     POLL_INTERVAL = fan.poll_interval
-    RESET_PWM_ON_EXIT = fan.reset_pwm_on_exit
-    TEMP_CHIP_REGEX = fan.temp_chip_regex
     TEMP_WARNING = fan.temp_warning
     TEMP_ALERT = fan.temp_alert
+    FAN_PWM_PATH = FAN_PWM_ENABLE_PATH = FAN_INPUT_PATH = CPU_TEMP_PATH = ""
 
 
 def clamp(value, low, high):
@@ -193,14 +185,14 @@ def set_fan_pwm(pwm):
     dbg(f"Fan PWM -> {pwm}")
 
     if not FAN_PWM_PATH:
-        log("[fan] pwm_path is not set and hwmon auto-discovery did not resolve it")
+        log("no fan PWM path: the it87 hwmon device was not found")
         return False
     if not os.path.exists(FAN_PWM_PATH):
         log(f"PWM path missing: {FAN_PWM_PATH}")
         return False
 
     ok = True
-    hint = "check [fan] hwmon_name/pwm_channel or set pwm_path"
+    hint = "check [fan] pwm_channel"
 
     if FAN_PWM_ENABLE_PATH and os.path.exists(FAN_PWM_ENABLE_PATH):
         ok = _write(FAN_PWM_ENABLE_PATH, MANUAL_PWM_ENABLE_VALUE, hint) and ok
@@ -219,13 +211,13 @@ def set_fan_pwm(pwm):
 
 def set_fan_auto():
     if not FAN_PWM_ENABLE_PATH:
-        log("[fan] pwm_enable_path is not set and hwmon auto-discovery did not resolve it")
+        log("no fan PWM enable path: the it87 hwmon device was not found")
         return False
     if not os.path.exists(FAN_PWM_ENABLE_PATH):
         log(f"PWM enable path missing: {FAN_PWM_ENABLE_PATH}")
         return False
 
-    hint = "check [fan] hwmon_name/pwm_channel or set pwm_enable_path"
+    hint = "check [fan] pwm_channel"
     ok = _write(FAN_PWM_ENABLE_PATH, AUTO_PWM_ENABLE_VALUE, hint)
     if ok:
         log(f"fan pwm control reset to auto: {FAN_PWM_ENABLE_PATH}={AUTO_PWM_ENABLE_VALUE}")
@@ -257,91 +249,35 @@ def read_text(path):
         return None
 
 
-def hwmon_dir_for(path):
-    if not path:
-        return None
-
-    directory = os.path.dirname(path)
-    if os.path.basename(directory).startswith("hwmon"):
-        return directory
-    return None
-
-
 def hwmon_name(hwmon_dir):
     if not hwmon_dir:
         return None
     return read_text(os.path.join(hwmon_dir, "name"))
 
 
-def hwmon_name_matches(name):
-    if not name:
-        return False
-
-    if FAN_HWMON_NAME and name == FAN_HWMON_NAME:
-        return True
-
-    if FAN_HWMON_REGEX:
-        return re.search(FAN_HWMON_REGEX, name) is not None
-
-    return False
-
-
 def find_hwmon():
-    if not FAN_HWMON_NAME and not FAN_HWMON_REGEX:
-        return None
-
-    for hwmon_dir in sorted(glob.glob("/sys/class/hwmon/hwmon*")):
-        if hwmon_name_matches(hwmon_name(hwmon_dir)):
+    """The hwmon directory of the it87 chip, or None."""
+    for hwmon_dir in sorted(glob.glob(os.path.join(HWMON_ROOT, "hwmon*"))):
+        name = hwmon_name(hwmon_dir)
+        if name and re.search(HWMON_NAME_REGEX, name):
             return hwmon_dir
     return None
-
-
-def configured_fan_paths_are_usable():
-    if not FAN_PWM_PATH or not FAN_INPUT_PATH:
-        return False
-
-    if not os.path.exists(FAN_PWM_PATH) or not os.path.exists(FAN_INPUT_PATH):
-        return False
-
-    if FAN_PWM_ENABLE_PATH and not os.path.exists(FAN_PWM_ENABLE_PATH):
-        return False
-
-    if FAN_HWMON_NAME or FAN_HWMON_REGEX:
-        configured_hwmon = hwmon_dir_for(FAN_PWM_PATH)
-        if not hwmon_name_matches(hwmon_name(configured_hwmon)):
-            return False
-
-    return True
 
 
 def resolve_host_hwmon_paths():
     global FAN_PWM_PATH, FAN_PWM_ENABLE_PATH, FAN_INPUT_PATH, CPU_TEMP_PATH
 
-    if not AUTO_DISCOVER_HWMON or configured_fan_paths_are_usable():
-        return
-
     hwmon_dir = find_hwmon()
     if not hwmon_dir:
-        dbg(
-            "Could not find matching fan hwmon device "
-            f"([fan] hwmon_name={FAN_HWMON_NAME!r}, hwmon_regex={FAN_HWMON_REGEX!r}); "
-            "using configured fan paths"
-        )
+        log(f"no hwmon device named like {HWMON_NAME_REGEX!r} in {HWMON_ROOT}: "
+            "is the it87 driver loaded?")
         return
 
     channel = FAN_PWM_CHANNEL
-    pwm_path = os.path.join(hwmon_dir, f"pwm{channel}")
-    pwm_enable_path = os.path.join(hwmon_dir, f"pwm{channel}_enable")
-    fan_input_path = os.path.join(hwmon_dir, f"fan{channel}_input")
-    cpu_temp_path = os.path.join(hwmon_dir, "temp1_input")
-
-    FAN_PWM_PATH = pwm_path
-    FAN_PWM_ENABLE_PATH = pwm_enable_path
-    FAN_INPUT_PATH = fan_input_path
-
-    if not CPU_TEMP_PATH or not os.path.exists(CPU_TEMP_PATH):
-        CPU_TEMP_PATH = cpu_temp_path
-
+    FAN_PWM_PATH = os.path.join(hwmon_dir, f"pwm{channel}")
+    FAN_PWM_ENABLE_PATH = os.path.join(hwmon_dir, f"pwm{channel}_enable")
+    FAN_INPUT_PATH = os.path.join(hwmon_dir, f"fan{channel}_input")
+    CPU_TEMP_PATH = os.path.join(hwmon_dir, "temp1_input")
     dbg(
         "Host hwmon paths resolved: "
         f"hwmon={hwmon_dir}, name={hwmon_name(hwmon_dir)}, channel={channel}, pwm={FAN_PWM_PATH}, "
@@ -350,19 +286,9 @@ def resolve_host_hwmon_paths():
     )
 
 
-def pwm_for_temp(temp_c, curve):
-    if temp_c <= curve[0][0]:
-        return int(clamp(curve[0][1], MIN_PWM, MAX_PWM))
-    if temp_c >= curve[-1][0]:
-        return int(clamp(curve[-1][1], MIN_PWM, MAX_PWM))
-
-    for (t0, p0), (t1, p1) in zip(curve, curve[1:]):
-        if t0 <= temp_c <= t1:
-            fraction = (temp_c - t0) / (t1 - t0)
-            pwm = round(p0 + (p1 - p0) * fraction)
-            return int(clamp(pwm, MIN_PWM, MAX_PWM))
-
-    return FAILSAFE_PWM
+def pwm_for_temp(temp_c, target, ramp):
+    """MIN_PWM up to `target` °C, then `ramp` more PWM per °C, up to MAX_PWM."""
+    return int(clamp(round(MIN_PWM + ramp * (temp_c - target)), MIN_PWM, MAX_PWM))
 
 
 def fetch_guest_sensors():
@@ -457,8 +383,8 @@ def control_once():
 
     hottest = max(readings, key=lambda r: r.temp_c)
     set_power_led_temperature(temperature_level(hottest.temp_c))
-    hdd_pwm = pwm_for_temp(hottest.temp_c, HDD_CURVE)
-    cpu_pwm = pwm_for_temp(cpu_temp, CPU_CURVE)
+    hdd_pwm = pwm_for_temp(hottest.temp_c, DISK_TARGET, DISK_RAMP)
+    cpu_pwm = pwm_for_temp(cpu_temp, CPU_TARGET, CPU_RAMP)
     pwm = max(hdd_pwm, cpu_pwm)
     dbg(f"Disk temperatures: {describe_readings(readings)}")
     log(
@@ -482,8 +408,7 @@ def run_loop():
             control_once()
             STOP_REQUESTED.wait(POLL_INTERVAL)
     finally:
-        if RESET_PWM_ON_EXIT:
-            apply_fan_auto()
+        apply_fan_auto()
 
 
 def main():

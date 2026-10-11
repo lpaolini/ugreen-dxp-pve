@@ -75,16 +75,78 @@ class FanStopTest(RuntimeDirectoryTestCase):
 
 
 class FanConfigureTest(unittest.TestCase):
-    def test_settings_come_from_the_configuration(self):
+    def setUp(self):
         fan.configure(load(TEMPLATE))
-        self.assertEqual(fan.HDD_CURVE[0], (30, 90))
-        self.assertEqual(fan.pwm_for_temp(40, fan.HDD_CURVE), 175)
-        self.assertEqual(fan.pwm_for_temp(20, fan.CPU_CURVE), 90)
+
+    def test_settings_come_from_the_configuration(self):
+        self.assertEqual((fan.DISK_TARGET, fan.DISK_RAMP), (35, 17))
+        self.assertEqual((fan.CPU_TARGET, fan.CPU_RAMP), (45, 3))
+        self.assertEqual((fan.MIN_PWM, fan.MAX_PWM, fan.FAILSAFE_PWM), (90, 255, 255))
         self.assertEqual(fan.FAN_PWM_CHANNEL, "3")
-        self.assertEqual(fan.MANUAL_PWM_ENABLE_VALUE, "1")
         self.assertEqual(fan.POLL_INTERVAL, 30)
-        self.assertTrue(fan.RESET_PWM_ON_EXIT)
         self.assertEqual((fan.TEMP_WARNING, fan.TEMP_ALERT), (40, 43))
+
+    def test_pwm_is_flat_up_to_the_target_then_ramps(self):
+        cases = {20: 90, 35: 90, 36: 107, 37.2: 127, 40: 175, 43: 226, 45: 255, 60: 255}
+        for temp, pwm in cases.items():
+            with self.subTest(temp=temp):
+                self.assertEqual(fan.pwm_for_temp(temp, fan.DISK_TARGET, fan.DISK_RAMP), pwm)
+
+    def poll(self, disk_temp, cpu_temp):
+        sensors = {"drivetemp-scsi-0-0": {"temp1": {"temp1_input": disk_temp}}}
+        with mock.patch.object(fan, "read_temp_c", return_value=cpu_temp), \
+                mock.patch.object(fan, "fetch_guest_sensors", return_value=sensors), \
+                mock.patch.object(fan, "set_power_led_temperature"), \
+                mock.patch.object(fan, "apply_fan_pwm", return_value=True) as apply, \
+                mock.patch.object(fan, "log"):
+            fan.control_once()
+        return apply.call_args.args[0]
+
+    def test_fan_follows_whichever_asks_for_more(self):
+        self.assertEqual(self.poll(disk_temp=40.0, cpu_temp=50.0), 175)  # disk 175, CPU 105
+        self.assertEqual(self.poll(disk_temp=30.0, cpu_temp=95.0), 240)  # disk 90, CPU 240
+
+    def test_loop_always_hands_the_fan_back(self):
+        fan.STOP_REQUESTED.set()
+        self.addCleanup(fan.STOP_REQUESTED.clear)
+        with mock.patch.object(fan, "apply_fan_auto") as auto, \
+                mock.patch.object(fan.signal, "signal"), mock.patch.object(fan, "log"):
+            fan.run_loop()
+        auto.assert_called_once()
+
+
+class HwmonDiscoveryTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        patcher = mock.patch.object(fan, "HWMON_ROOT", self.tmp.name)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        fan.configure(load(TEMPLATE))
+
+    def hwmon(self, index, name):
+        path = os.path.join(self.tmp.name, f"hwmon{index}")
+        os.makedirs(path)
+        with open(os.path.join(path, "name"), "w") as f:
+            f.write(name + "\n")
+        return path
+
+    def test_paths_come_from_the_it87_chip_and_the_channel(self):
+        self.hwmon(0, "nvme")
+        chip = self.hwmon(1, "it8613")
+        fan.resolve_host_hwmon_paths()
+        self.assertEqual(fan.FAN_PWM_PATH, os.path.join(chip, "pwm3"))
+        self.assertEqual(fan.FAN_PWM_ENABLE_PATH, os.path.join(chip, "pwm3_enable"))
+        self.assertEqual(fan.FAN_INPUT_PATH, os.path.join(chip, "fan3_input"))
+        self.assertEqual(fan.CPU_TEMP_PATH, os.path.join(chip, "temp1_input"))
+
+    def test_without_the_chip_the_fan_cannot_be_driven(self):
+        self.hwmon(0, "nvme")
+        with mock.patch.object(fan, "log") as log:
+            fan.resolve_host_hwmon_paths()
+            self.assertFalse(fan.set_fan_pwm(120))
+        self.assertEqual(fan.FAN_PWM_PATH, "")
+        self.assertIn("it87", log.call_args_list[0].args[0])
 
 
 class TemperatureLookTest(unittest.TestCase):

@@ -21,39 +21,12 @@ def _number(text):
     return int(value) if value.is_integer() else value
 
 
-def _curve(text):
-    """'30:90,35:120' -> [[30, 90], [35, 120]]"""
-    points = []
-    for item in text.split(","):
-        if item.strip():
-            temp, pwm = item.split(":", 1)
-            points.append([_number(temp), int(pwm)])
-    return points
-
-
-def _flag(text):
-    return text == "1"  # as the old services: exactly "1" is true
-
-
 FAN_KEYS = {  # old variable -> ([fan] key, converter)
     "POLL_INTERVAL": ("poll_interval", _number),
-    "HDD_FAN_CURVE": ("hdd_curve", _curve),
-    "CPU_FAN_CURVE": ("cpu_curve", _curve),
     "MIN_PWM": ("min_pwm", int),
     "MAX_PWM": ("max_pwm", int),
     "FAILSAFE_PWM": ("failsafe_pwm", int),
-    "MANUAL_PWM_ENABLE_VALUE": ("manual_pwm_enable_value", int),
-    "AUTO_PWM_ENABLE_VALUE": ("auto_pwm_enable_value", int),
-    "RESET_PWM_ON_EXIT": ("reset_pwm_on_exit", _flag),
-    "AUTO_DISCOVER_HWMON": ("auto_discover_hwmon", _flag),
-    "FAN_HWMON_NAME": ("hwmon_name", str),
-    "FAN_HWMON_REGEX": ("hwmon_regex", str),
     "FAN_PWM_CHANNEL": ("pwm_channel", int),
-    "FAN_PWM_PATH": ("pwm_path", str),
-    "FAN_PWM_ENABLE_PATH": ("pwm_enable_path", str),
-    "FAN_INPUT_PATH": ("input_path", str),
-    "CPU_TEMP_PATH": ("cpu_temp_path", str),
-    "TEMP_CHIP_REGEX": ("temp_chip_regex", str),
 }
 ZFS_KEYS = {  # old variable -> ([zfs] key, converter)
     "POLL_INTERVAL": ("poll_interval", _number),
@@ -63,7 +36,12 @@ BAY_KEYS = tuple(f"BAY_{n}_PATH" for n in range(1, 5))
 SHARED_KEYS = ("VMID", "DEBUG")
 # Settings of older releases that no longer mean anything: dropped silently.
 OBSOLETE_KEYS = ("POWER_LED_HELPER", "POWER_LED_FAULT_NAME", "LEDS_OFF_ON_EXIT",
-                 "LED_1_PATH", "LED_2_PATH", "LED_3_PATH", "LED_4_PATH")
+                 "LED_1_PATH", "LED_2_PATH", "LED_3_PATH", "LED_4_PATH",
+                 # replaced by target temperatures and ramps, or built in
+                 "HDD_FAN_CURVE", "CPU_FAN_CURVE", "MANUAL_PWM_ENABLE_VALUE",
+                 "AUTO_PWM_ENABLE_VALUE", "RESET_PWM_ON_EXIT", "AUTO_DISCOVER_HWMON",
+                 "FAN_HWMON_NAME", "FAN_HWMON_REGEX", "FAN_PWM_PATH", "FAN_PWM_ENABLE_PATH",
+                 "FAN_INPUT_PATH", "CPU_TEMP_PATH", "TEMP_CHIP_REGEX")
 
 
 def convert(template, fan, zfs):

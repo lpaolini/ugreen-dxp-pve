@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from tests.helpers import TEMPLATE
-from ugreen_truenas.config import load
+from ugreen_truenas.config import Fan, load
 from ugreen_truenas.migrate import main
 
 FAN = """# Configuration for ugreen-truenas-fan.service.
@@ -65,17 +65,16 @@ class MigrateTest(unittest.TestCase):
         self.assertTrue(config.debug)
         self.assertEqual(config.fan.poll_interval, 20)
         self.assertEqual(config.fan.pwm_channel, 2)
-        self.assertEqual(config.fan.hdd_curve, ((30, 80), (45, 255)))
         self.assertEqual(config.fan.min_pwm, 80)
-        self.assertFalse(config.fan.reset_pwm_on_exit)
-        self.assertEqual(config.fan.temp_chip_regex, "(?i)(drivetemp|nvme)")
+        self.assertEqual((config.fan.disk_target_temperature, config.fan.disk_ramp), (35, 17))
         self.assertEqual(config.zfs.poll_interval, 60)
         self.assertEqual(config.zfs.alert_threshold, 0.9)
         self.assertEqual(config.zfs.bays[2], "/dev/disk/by-path/custom-3")
         self.assertEqual(config.zfs.bays[0], "/dev/disk/by-path/pci-0000:00:10.0-ata-1")
         self.assertEqual(config.disk, load(TEMPLATE).disk)
-        for obsolete in ("POWER_LED_HELPER", "LEDS_OFF_ON_EXIT", "LED_1_PATH"):
-            self.assertNotIn(obsolete, out)
+        for dropped in ("POWER_LED_HELPER", "LEDS_OFF_ON_EXIT", "LED_1_PATH", "HDD_FAN_CURVE",
+                        "RESET_PWM_ON_EXIT", "TEMP_CHIP_REGEX"):
+            self.assertNotIn(dropped, out)
 
     def test_comments_survive(self):
         self.migrate(FAN, ZFS)
@@ -140,17 +139,18 @@ class MigrateTest(unittest.TestCase):
         self.assertIn("ignored VMID='abc'", out)
         self.assertIn("using VMID 105", out)
 
-    def test_flags_are_true_only_for_1(self):
-        rc, _, _ = self.migrate("RESET_PWM_ON_EXIT=yes\n")
+    def test_old_fan_settings_are_dropped(self):
+        rc, out, _ = self.migrate("HDD_FAN_CURVE=30:80,45:255\nCPU_FAN_CURVE=45:90,95:255\n"
+                                  "RESET_PWM_ON_EXIT=0\nFAN_HWMON_NAME=it8613\n"
+                                  "FAN_PWM_PATH=/sys/class/hwmon/hwmon3/pwm3\n")
         self.assertEqual(rc, 0)
-        self.assertFalse(load(self.output).fan.reset_pwm_on_exit)
+        self.assertEqual(load(self.output).fan, Fan())
+        self.assertNotIn("ignored", out)
 
     def test_empty_values_are_unset(self):
-        rc, out, _ = self.migrate("FAN_HWMON_NAME=\nMIN_PWM=\n")
+        rc, out, _ = self.migrate("FAILSAFE_PWM=\nMIN_PWM=\n")
         self.assertEqual(rc, 0)
-        with open(self.output) as f:
-            self.assertIn("# hwmon_name =", f.read())
-        self.assertEqual(load(self.output).fan.hwmon_name, "")
+        self.assertEqual(load(self.output).fan.min_pwm, 90)
         self.assertNotIn("ignored", out)
 
     def test_no_old_files(self):
