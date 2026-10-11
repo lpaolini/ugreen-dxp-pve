@@ -15,21 +15,26 @@ poll_interval = 30
 # Fan speed limits (PWM 0-255), for noise control.
 min_pwm = 90
 max_pwm = 255
-# The fan stays at min_pwm up to the target temperature (°C) and speeds up by
-# `ramp` PWM for every °C above it, up to max_pwm. It follows whichever of the
-# hottest disk and the host CPU asks for more.
-disk_target_temperature = 35
-disk_ramp = 17
-cpu_target_temperature = 45
-cpu_ramp = 3
 # PWM used when temperatures cannot be read, e.g. while TrueNAS is stopped.
 failsafe_pwm = 255
 # The fan header the case fan is wired to: pwmN of the it87 chip (usually 2 or 3).
 pwm_channel = 3
-# The power LED turns orange when the hottest disk reaches temp_warning and
-# red at temp_alert (°C).
-temp_warning = 40
-temp_alert = 43
+
+# The fan follows whichever of the hottest disk and the host CPU asks for more.
+[disk]
+# The fan stays at min_pwm up to target_temperature (°C) and speeds up by
+# `ramp` PWM for every °C above it, up to max_pwm.
+target_temperature = 35
+ramp = 17
+# The power LED turns orange when the hottest disk reaches warning_temperature
+# (°C); at alert_temperature it turns red and the fan runs at max_pwm.
+warning_temperature = 40
+alert_temperature = 43
+
+[cpu]
+# As in [disk], for the host CPU.
+target_temperature = 45
+ramp = 3
 
 [zfs]
 # Seconds between polls.
@@ -51,12 +56,12 @@ priority = 10
 color = "#ff0000"
 effect = "blink:500:500"
 
-# The power LED while the hottest disk is at or above [fan] temp_alert.
+# The power LED while the hottest disk is at or above [disk] alert_temperature.
 [power.TEMP_ALERT]
 priority = 20
 color = "#ff0000"
 
-# The power LED while the hottest disk is at or above [fan] temp_warning.
+# The power LED while the hottest disk is at or above [disk] warning_temperature.
 [power.TEMP_WARNING]
 priority = 30
 color = "#ff8000"

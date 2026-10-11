@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from tests.helpers import TEMPLATE
-from ugreen_truenas.config import Fan, load
+from ugreen_truenas.config import Cpu, Disk, Fan, load
 from ugreen_truenas.migrate import main
 
 FAN = """# Configuration for ugreen-truenas-fan.service.
@@ -66,12 +66,12 @@ class MigrateTest(unittest.TestCase):
         self.assertEqual(config.fan.poll_interval, 20)
         self.assertEqual(config.fan.pwm_channel, 2)
         self.assertEqual(config.fan.min_pwm, 80)
-        self.assertEqual((config.fan.disk_target_temperature, config.fan.disk_ramp), (35, 17))
+        self.assertEqual(config.disk, Disk())
         self.assertEqual(config.zfs.poll_interval, 60)
         self.assertEqual(config.zfs.alert_threshold, 0.9)
         self.assertEqual(config.zfs.bays[2], "/dev/disk/by-path/custom-3")
         self.assertEqual(config.zfs.bays[0], "/dev/disk/by-path/pci-0000:00:10.0-ata-1")
-        self.assertEqual(config.disk, load(TEMPLATE).disk)
+        self.assertEqual(config.disk_looks, load(TEMPLATE).disk_looks)
         for dropped in ("POWER_LED_HELPER", "LEDS_OFF_ON_EXIT", "LED_1_PATH", "HDD_FAN_CURVE",
                         "RESET_PWM_ON_EXIT", "TEMP_CHIP_REGEX"):
             self.assertNotIn(dropped, out)
@@ -176,7 +176,7 @@ class MigrateTest(unittest.TestCase):
         """The template as the first TOML release shipped it: no temperature looks."""
         with open(TEMPLATE) as f:
             text = f.read()
-        start = text.index("# The power LED while the hottest disk is at or above [fan] temp_alert.")
+        start = text.index("# The power LED while the hottest disk is at or above [disk] alert_temperature.")
         end = text.index("# Disk LEDs, most severe first.")
         return text[:start] + text[end:]
 
@@ -187,7 +187,7 @@ class MigrateTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         config = load(self.output)
         self.assertEqual(config.vmid, "105")
-        self.assertEqual(set(config.power), {"FAULT", "TEMP_ALERT", "TEMP_WARNING"})
+        self.assertEqual(set(config.power_looks), {"FAULT", "TEMP_ALERT", "TEMP_WARNING"})
         self.assertIn("Added [power.TEMP_ALERT], [power.TEMP_WARNING]", out)
 
     def test_completing_keeps_the_file_mode(self):
@@ -228,12 +228,23 @@ class MigrateTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         config = load(self.output)
         self.assertEqual(config.vmid, "105")
-        self.assertEqual(config.fan, Fan())
-        self.assertEqual(out, f"Replaced [fan] in {self.output} with the new defaults\n")
+        self.assertEqual((config.fan, config.disk, config.cpu), (Fan(), Disk(), Cpu()))
+        self.assertEqual(out, f"Added [disk], [cpu] to {self.output}\n"
+                              f"Replaced [fan] in {self.output} with the new defaults\n")
         with open(self.output) as f:
             replaced = f.read()
         self.assertNotIn("hdd_curve", replaced)
         self.assertIn("# `ramp` PWM for every °C above it", replaced)
+
+    def test_fan_table_with_targets_is_replaced(self):
+        """The dev format that kept the targets and thresholds in [fan]."""
+        with open(os.path.join(os.path.dirname(__file__), "data", "dev-fan-targets.toml")) as f:
+            self.write("truenas.toml", f.read().replace("disk_ramp = 17", "disk_ramp = 20"))
+        rc, out, _ = self.migrate()
+        self.assertEqual(rc, 0)
+        config = load(self.output)
+        self.assertEqual((config.fan, config.disk, config.cpu), (Fan(), Disk(), Cpu()))
+        self.assertIn("Replaced [fan]", out)
 
     def test_current_fan_table_is_kept(self):
         with open(TEMPLATE) as f:

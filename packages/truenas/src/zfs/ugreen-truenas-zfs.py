@@ -59,7 +59,7 @@ def configure(config):
     POLL_INTERVAL = config.zfs.poll_interval
     BAYS = {str(n): path for n, path in enumerate(config.zfs.bays, 1)}
     ALERT_THRESHOLD = config.zfs.alert_threshold
-    DISK_LOOKS = config.disk
+    DISK_LOOKS = config.disk_looks
     LAST_COLOR.clear()
 
 

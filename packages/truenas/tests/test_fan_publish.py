@@ -106,6 +106,11 @@ class FanConfigureTest(unittest.TestCase):
         self.assertEqual(self.poll(disk_temp=40.0, cpu_temp=50.0), 175)  # disk 175, CPU 105
         self.assertEqual(self.poll(disk_temp=30.0, cpu_temp=95.0), 240)  # disk 90, CPU 240
 
+    def test_alert_temperature_runs_the_fan_at_max(self):
+        with mock.patch.object(fan, "DISK_RAMP", 5):  # gentle: 125 at 42 °C, 130 at 43 °C
+            self.assertEqual(self.poll(disk_temp=42.0, cpu_temp=40.0), 125)
+            self.assertEqual(self.poll(disk_temp=43.0, cpu_temp=40.0), 255)
+
     def test_loop_always_hands_the_fan_back(self):
         fan.STOP_REQUESTED.set()
         self.addCleanup(fan.STOP_REQUESTED.clear)

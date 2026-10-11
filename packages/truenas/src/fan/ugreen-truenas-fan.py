@@ -39,7 +39,7 @@ POLL_INTERVAL = 30
 # Found by resolve_host_hwmon_paths().
 FAN_PWM_PATH = FAN_PWM_ENABLE_PATH = FAN_INPUT_PATH = CPU_TEMP_PATH = ""
 POWER_LED_FAULT_LOOK = None  # published for the power LED while the fan cannot be controlled
-TEMP_WARNING = TEMP_ALERT = 0  # °C, hottest disk
+TEMP_WARNING = TEMP_ALERT = 0  # °C, hottest disk; from TEMP_ALERT the fan runs at MAX_PWM
 POWER_LED_TEMP_LOOKS = {}  # "TEMP_WARNING" / "TEMP_ALERT" -> Look
 TEMP_PRODUCER = "truenas-temp"  # RuntimeDirectory that carries the temperature look
 
@@ -70,27 +70,28 @@ def dbg(msg):
 def configure(config):
     """Apply a loaded configuration to the module settings."""
     global VMID, DEBUG, POWER_LED_FAULT_LOOK, POWER_LED_TEMP_LOOKS
+    global DISK_TARGET, DISK_RAMP, CPU_TARGET, CPU_RAMP, TEMP_WARNING, TEMP_ALERT
     VMID = config.vmid
     DEBUG = config.debug
-    POWER_LED_FAULT_LOOK = config.power["FAULT"]
-    POWER_LED_TEMP_LOOKS = {name: config.power[name] for name in ("TEMP_WARNING", "TEMP_ALERT")}
+    POWER_LED_FAULT_LOOK = config.power_looks["FAULT"]
+    POWER_LED_TEMP_LOOKS = {name: config.power_looks[name]
+                            for name in ("TEMP_WARNING", "TEMP_ALERT")}
+    DISK_TARGET, DISK_RAMP = config.disk.target_temperature, config.disk.ramp
+    CPU_TARGET, CPU_RAMP = config.cpu.target_temperature, config.cpu.ramp
+    TEMP_WARNING = config.disk.warning_temperature
+    TEMP_ALERT = config.disk.alert_temperature
     configure_fan(config.fan)
 
 
 def configure_fan(fan):
     """Apply the [fan] settings to the module settings."""
-    global FAN_PWM_CHANNEL, DISK_TARGET, DISK_RAMP, CPU_TARGET, CPU_RAMP
-    global MIN_PWM, MAX_PWM, FAILSAFE_PWM, POLL_INTERVAL, TEMP_WARNING, TEMP_ALERT
+    global FAN_PWM_CHANNEL, MIN_PWM, MAX_PWM, FAILSAFE_PWM, POLL_INTERVAL
     global FAN_PWM_PATH, FAN_PWM_ENABLE_PATH, FAN_INPUT_PATH, CPU_TEMP_PATH
     FAN_PWM_CHANNEL = str(fan.pwm_channel)
-    DISK_TARGET, DISK_RAMP = fan.disk_target_temperature, fan.disk_ramp
-    CPU_TARGET, CPU_RAMP = fan.cpu_target_temperature, fan.cpu_ramp
     MIN_PWM = fan.min_pwm
     MAX_PWM = fan.max_pwm
     FAILSAFE_PWM = fan.failsafe_pwm
     POLL_INTERVAL = fan.poll_interval
-    TEMP_WARNING = fan.temp_warning
-    TEMP_ALERT = fan.temp_alert
     FAN_PWM_PATH = FAN_PWM_ENABLE_PATH = FAN_INPUT_PATH = CPU_TEMP_PATH = ""
 
 
@@ -383,7 +384,10 @@ def control_once():
 
     hottest = max(readings, key=lambda r: r.temp_c)
     set_power_led_temperature(temperature_level(hottest.temp_c))
-    hdd_pwm = pwm_for_temp(hottest.temp_c, DISK_TARGET, DISK_RAMP)
+    if hottest.temp_c >= TEMP_ALERT:
+        hdd_pwm = MAX_PWM
+    else:
+        hdd_pwm = pwm_for_temp(hottest.temp_c, DISK_TARGET, DISK_RAMP)
     cpu_pwm = pwm_for_temp(cpu_temp, CPU_TARGET, CPU_RAMP)
     pwm = max(hdd_pwm, cpu_pwm)
     dbg(f"Disk temperatures: {describe_readings(readings)}")
