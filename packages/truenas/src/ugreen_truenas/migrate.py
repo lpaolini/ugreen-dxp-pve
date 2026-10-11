@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 """ugreen-dxp-pve-truenas-migrate: build the TOML config from the old .conf files.
 
-Run by postinst: builds the config from the old .conf files when it does not exist yet,
-and appends tables a newer template added when it does.
+Run by postinst: builds the config from the old .conf files when it does not exist yet;
+otherwise appends tables a newer template added and replaces an old-style [fan].
 """
 import argparse
 import contextlib
@@ -11,9 +11,9 @@ import sys
 import tomllib
 
 from ugreen_leds.envfile import read_env
-from ugreen_leds.tomledit import add_missing_tables, set_key
+from ugreen_leds.tomledit import add_missing_tables, replace_table, set_key
 
-from .config import ConfigError, build
+from .config import FAN_CHECKS, ConfigError, build
 
 
 def _number(text):
@@ -108,22 +108,31 @@ def convert(template, fan, zfs):
     return text, messages
 
 
+def replace_old_fan_table(text, template):
+    """`text` with an old-style [fan] replaced by the template's, or None if [fan] is current."""
+    if not set(tomllib.loads(text).get("fan", {})) - set(FAN_CHECKS):
+        return None
+    return replace_table(text, template, "fan")
+
+
 def complete(template_path, path):
-    """Append the tables of the template that the existing config at `path` lacks."""
+    """Bring the existing config at `path` up to date with the template.
+
+    Appends the tables it lacks and replaces an old-style [fan] by the template's.
+    """
     try:
         with open(template_path) as f:
             template = f.read()
         with open(path) as f:
             text = f.read()
-    except (OSError, UnicodeDecodeError) as e:
-        print(f"cannot update {path}: {e}", file=sys.stderr)
-        return 1
-    text, added = add_missing_tables(text, template)
-    if not added:
-        return 0
-    try:
+        text, added = add_missing_tables(text, template)
+        replaced = replace_old_fan_table(text, template)
+        if replaced is not None:
+            text = replaced
+        elif not added:
+            return 0
         build(tomllib.loads(text))
-    except (ConfigError, ValueError) as e:
+    except (OSError, ValueError, ConfigError, KeyError) as e:  # ValueError: bad UTF-8 or TOML
         print(f"cannot update {path}: {e}", file=sys.stderr)
         return 1
     tmp = f"{path}.tmp"
@@ -138,7 +147,10 @@ def complete(template_path, path):
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         return 1
-    print(f"Added {', '.join(f'[{table}]' for table in added)} to {path}")
+    if added:
+        print(f"Added {', '.join(f'[{table}]' for table in added)} to {path}")
+    if replaced is not None:
+        print(f"Replaced [fan] in {path} with the new defaults")
     return 0
 
 

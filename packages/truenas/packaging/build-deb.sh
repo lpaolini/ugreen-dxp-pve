@@ -93,7 +93,7 @@ old_conf() {
 
 if [ "${1:-}" = "configure" ]; then
   if [ -e "$CONF" ]; then
-    # Add the tables a newer release introduced; settings are never changed.
+    # Add the tables a newer release introduced and replace an old-style [fan].
     "$MIGRATE" "$TEMPLATE" "$CONF" || echo "Could not update $CONF; compare it with $TEMPLATE."
   else
     fan="$(old_conf /etc/ugreen-dxp-pve-truenas-fan.conf)"

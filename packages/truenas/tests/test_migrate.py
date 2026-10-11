@@ -217,6 +217,31 @@ class MigrateTest(unittest.TestCase):
         self.assertEqual((rc, out), (0, ""))
         self.assertEqual(os.stat(self.output).st_mtime_ns, before)
 
+    def dev_config(self):
+        with open(os.path.join(os.path.dirname(__file__), "data", "dev-fan-curves.toml")) as f:
+            return f.read()
+
+    def test_old_fan_table_is_replaced(self):
+        self.write("truenas.toml", self.dev_config().replace("vmid = 100", "vmid = 105")
+                   .replace("min_pwm = 90", "min_pwm = 80"))
+        rc, out, _ = self.migrate()
+        self.assertEqual(rc, 0)
+        config = load(self.output)
+        self.assertEqual(config.vmid, "105")
+        self.assertEqual(config.fan, Fan())
+        self.assertEqual(out, f"Replaced [fan] in {self.output} with the new defaults\n")
+        with open(self.output) as f:
+            replaced = f.read()
+        self.assertNotIn("hdd_curve", replaced)
+        self.assertIn("# `ramp` PWM for every °C above it", replaced)
+
+    def test_current_fan_table_is_kept(self):
+        with open(TEMPLATE) as f:
+            self.write("truenas.toml", f.read().replace("min_pwm = 90", "min_pwm = 80"))
+        rc, out, _ = self.migrate()
+        self.assertEqual((rc, out), (0, ""))
+        self.assertEqual(load(self.output).fan.min_pwm, 80)
+
     def test_invalid_existing_config_is_left_alone(self):
         self.write("truenas.toml", "keep")
         rc, _, err = self.migrate(zfs="VMID=103\n")
