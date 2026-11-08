@@ -124,7 +124,7 @@ sudo apt install ./ugreen-dxp-pve-truenas_latest.deb
 ```
 
 The package installs the helpers to `/usr/bin`, the systemd units to
-`/lib/systemd/system`, creates `/etc/ugreen-dxp-pve-truenas.toml` if it does
+`/usr/lib/systemd/system`, creates `/etc/ugreen-dxp-pve-truenas.toml` if it does
 not exist, reloads systemd, and enables the fan and ZFS services. An existing
 `/etc/ugreen-dxp-pve-truenas.toml` is kept: an upgrade only adds new tables and
 replaces an old-style `[fan]`. The services query

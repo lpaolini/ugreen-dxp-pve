@@ -27,7 +27,7 @@ install -d -m 0755 \
   "${PKG_DIR}/usr/libexec/${PACKAGE}" \
   "${PKG_DIR}/usr/share/doc/${PACKAGE}" \
   "${PKG_DIR}/usr/share/${PACKAGE}" \
-  "${PKG_DIR}/lib/systemd/system" \
+  "${PKG_DIR}/usr/lib/systemd/system" \
   "${OUT_DIR}"
 
 install -m 0755 "${PACKAGE_ROOT}/src/fan/ugreen-truenas-fan.py" "${PKG_DIR}/usr/bin/ugreen-truenas-fan.py"
@@ -40,8 +40,8 @@ for unit in \
   "${PACKAGE_ROOT}/src/fan/ugreen-truenas-fan.service" \
   "${PACKAGE_ROOT}/src/zfs/ugreen-truenas-zfs.service"
 do
-  sed 's#/usr/local/bin/#/usr/bin/#g' "${unit}" > "${PKG_DIR}/lib/systemd/system/$(basename "${unit}")"
-  chmod 0644 "${PKG_DIR}/lib/systemd/system/$(basename "${unit}")"
+  sed 's#/usr/local/bin/#/usr/bin/#g' "${unit}" > "${PKG_DIR}/usr/lib/systemd/system/$(basename "${unit}")"
+  chmod 0644 "${PKG_DIR}/usr/lib/systemd/system/$(basename "${unit}")"
 done
 
 cat > "${PKG_DIR}/DEBIAN/control" <<CONTROL
@@ -214,7 +214,7 @@ COPYRIGHT
 
 (
   cd "${PKG_DIR}"
-  find usr lib -type f -exec md5sum {} + > DEBIAN/md5sums
+  find usr -type f -exec md5sum {} + > DEBIAN/md5sums
 )
 
 dpkg-deb --build --root-owner-group "${PKG_DIR}" "${OUT_DIR}/${PACKAGE}_${VERSION}_all.deb"

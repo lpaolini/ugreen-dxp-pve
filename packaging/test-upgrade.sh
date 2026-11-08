@@ -118,6 +118,9 @@ EOF
     done
   fi
   test -d /run/ugreen-dxp-leds
+  # The units moved from /lib to /usr/lib: the same directory on merged-/usr.
+  test -s /usr/lib/systemd/system/ugreen-truenas-fan.service
+  test -s /usr/lib/systemd/system/ugreen-truenas-zfs.service
 }
 
 check
