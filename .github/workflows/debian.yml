@@ -3,16 +3,13 @@ name: Debian packages
 # Every push and pull request is built and checked.
 #   push to dev       -> rolling "dev" pre-release -> APT suite "dev"
 #   tag vX.Y.Z (main) -> GitHub release vX.Y.Z    -> APT suite "stable"
-#   manual run        -> rebuild the APT repository from the existing releases
-# The repository is always rebuilt from both release channels, because every
-# Pages deployment replaces the whole site.
+# of the shared APT repository https://lpaolini.github.io/apt (lpaolini/apt).
 
 on:
   push:
     branches: ["**"]
     tags: ["v*"]
   pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -66,7 +63,6 @@ jobs:
         run: |
           shellcheck \
             packaging/build-all.sh \
-            packaging/build-repository.sh \
             packaging/version.sh \
             packaging/test-upgrade.sh \
             packages/leds-dkms/debian/ugreen-dxp-pve-leds-dkms.postinst \
@@ -83,33 +79,25 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Releasing and deploying run as one serialized job, so a newer dev push can
-  # never replace the dev release while an older run is still deploying it.
-  publish:
+  # Serialized, so a newer dev push can never replace the dev release while
+  # an older run is still creating it. The APT repository (lpaolini/apt) is
+  # rebuilt from the releases of all its projects.
+  release:
     needs: build
-    if: needs.build.outputs.channel != 'none' || github.event_name == 'workflow_dispatch'
+    if: needs.build.outputs.channel != 'none'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pages: write
-      id-token: write
     concurrency:
-      group: publish
+      group: release
       cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CHANNEL: ${{ needs.build.outputs.channel }}
       VERSION: ${{ needs.build.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Download packages
-        if: env.CHANNEL != 'none'
         uses: actions/download-artifact@v4
         with:
           name: debs
@@ -130,38 +118,7 @@ jobs:
             --target "${GITHUB_SHA}" --title "Development build ${VERSION}" \
             --notes "Automatic build of ${GITHUB_SHA} from the dev branch. Not for production use."
 
-      - name: Install repository tooling
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends apt-utils dpkg-dev gnupg
-
-      - name: Download released packages
-        run: |
-          gh release download --pattern '*.deb' --dir channels/stable  # latest stable release
-          suites=(stable=channels/stable)
-          if gh release download dev --pattern '*.deb' --dir channels/dev; then
-            suites+=(dev=channels/dev)
-          fi
-          echo "SUITES=${suites[*]}" >> "${GITHUB_ENV}"
-
-      - name: Build APT repository
+      - name: Rebuild the APT repository
         env:
-          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
-          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
-          REQUIRE_APT_SIGNING: "1"
-        run: |
-          # shellcheck disable=SC2086  # SUITES is a list of SUITE=DIR words
-          ./packaging/build-repository.sh public \
-            "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}" ${SUITES}
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: public
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          GH_TOKEN: ${{ secrets.APT_REPO_TOKEN }}
+        run: gh workflow run publish.yaml -R lpaolini/apt

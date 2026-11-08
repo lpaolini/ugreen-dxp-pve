@@ -14,7 +14,7 @@ set -euo pipefail
 usage="usage: $0 stable|dev DIST_DIR"
 CHANNEL="${1:?${usage}}"
 DIST="$(cd "${2:?${usage}}" && pwd)"
-REPO=https://lpaolini.github.io/ugreen-dxp-pve
+REPO=https://lpaolini.github.io/apt
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -qq

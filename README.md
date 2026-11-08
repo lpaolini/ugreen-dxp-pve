@@ -92,10 +92,15 @@ Enter Proxmox VE shell as root, and install the Debian repository:
 
 ```bash
 install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://lpaolini.github.io/ugreen-dxp-pve/public.key | gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/ugreen-dxp-pve stable main" | tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
+curl -fsSL https://lpaolini.github.io/apt/public.key | gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/apt stable main" | tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
 apt update
 ```
+
+The repository moved from `https://lpaolini.github.io/ugreen-dxp-pve`, which no
+longer gets updates. If you added it before, change the URL in
+`/etc/apt/sources.list.d/ugreen-dxp-pve.list` (and `ugreen-dxp-pve-dev.list`)
+to `https://lpaolini.github.io/apt`, then run `apt update`.
 
 To install the kernel modules and the support services for TrueNAS:
 
@@ -115,7 +120,7 @@ Every commit to the `dev` branch is published to a separate `dev` channel of the
 same repository. To try it on a test host, add a second source line:
 
 ```bash
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/ugreen-dxp-pve dev main" | tee /etc/apt/sources.list.d/ugreen-dxp-pve-dev.list
+echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/apt dev main" | tee /etc/apt/sources.list.d/ugreen-dxp-pve-dev.list
 apt update && apt upgrade
 ```
 
@@ -155,7 +160,6 @@ packages/
   truenas/       Proxmox/TrueNAS helper package
 packaging/
   build-all.sh         Build all .deb packages into dist/
-  build-repository.sh  Build an APT repository with one suite per channel
   version.sh           Derive the package version from git tags
 ```
 
@@ -176,14 +180,8 @@ Build all packages; the version defaults to the one derived from git
 ./packaging/build-all.sh 0.10.0 dist
 ```
 
-Build an unsigned local APT repository with a `stable` suite:
-
-```bash
-./packaging/build-repository.sh public http://localhost:8000 stable=dist
-```
-
-The package files will be in `dist/`, and the APT repository tree will be in
-`public/`.
+The package files will be in `dist/`. To build an APT repository from them,
+use `build-repository.sh` from [lpaolini/apt](https://github.com/lpaolini/apt).
 
 ## Forking
 
@@ -196,32 +194,13 @@ two places:
 | Push to `dev` | `X.Y.Z+devN.g<sha>` | rolling `dev` pre-release, replaced on every push | `dev` |
 | Tag `vX.Y.Z` on `main` | `X.Y.Z` | `vX.Y.Z` | `stable` |
 
-Every deployment rebuilds the whole GitHub Pages site from the latest stable
-release and the `dev` pre-release, so publishing one channel never drops the
-other. Running the workflow manually rebuilds the site without publishing
-anything new.
-
-Before the publish workflow can create the signed APT repository, configure
-GitHub Pages and add the signing key secrets:
-
-- `APT_SIGNING_KEY`: ASCII-armored private key used to sign the APT repository.
-- `APT_SIGNING_PASSPHRASE`: optional passphrase for the private key.
-
-In GitHub, open `Settings -> Pages` and set `Build and deployment -> Source` to
-`GitHub Actions`. Then open `Settings -> Environments -> github-pages` and make
-sure `Deployment branches and tags` allows the `dev` branch and `v*` tags.
-
-Create a signing key locally:
-
-```bash
-gpg --quick-generate-key "ugreen-dxp-pve apt <you@example.com>" ed25519 sign 2y
-gpg --list-secret-keys --keyid-format=long
-gpg --armor --export-secret-keys <fingerprint>
-```
-
-Paste the exported private key into `Settings -> Secrets and variables ->
-Actions -> New repository secret` as `APT_SIGNING_KEY`. If the key has a
-passphrase, add it as `APT_SIGNING_PASSPHRASE`.
+The APT repository itself lives in [lpaolini/apt](https://github.com/lpaolini/apt),
+shared with other projects: after each release, the workflow runs its
+`publish.yaml`, which rebuilds the repository from the GitHub releases of every
+project it lists. That needs a repository secret `APT_REPO_TOKEN`: a
+fine-grained token for `lpaolini/apt` with Actions read and write. A fork
+publishes its own releases; to get an APT repository, fork `lpaolini/apt` too,
+list the fork in its `sources` and change `lpaolini/apt` in the workflow.
 
 Day to day, merge work into `dev` and test it from the `dev` channel. To
 release a tested `dev` commit as stable:
@@ -235,11 +214,8 @@ git push origin main v0.10.0
 
 The workflow refuses release tags that are not on `main`.
 
-After the workflow completes, the repository is available at:
-
-```text
-https://<you>.github.io/ugreen-dxp-pve
-```
+After the workflow completes, the release is in the repository at
+`https://lpaolini.github.io/apt` (`https://<you>.github.io/apt` for a fork).
 
 ## License
 

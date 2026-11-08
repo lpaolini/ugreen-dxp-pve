@@ -38,9 +38,9 @@ Install from the Debian repository:
 ```sh
 sudo install -d -m 0755 /etc/apt/keyrings
 
-curl -fsSL https://lpaolini.github.io/ugreen-dxp-pve/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
+curl -fsSL https://lpaolini.github.io/apt/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
 
-echo 'deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/ugreen-dxp-pve stable main' | sudo tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
+echo 'deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/apt stable main' | sudo tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
 
 sudo apt update
 sudo apt install ugreen-dxp-pve-leds-dkms
@@ -50,7 +50,7 @@ Or download and install the latest `.deb` directly:
 
 ```sh
 cd /tmp
-curl -LO https://lpaolini.github.io/ugreen-dxp-pve/downloads/ugreen-dxp-pve-leds-dkms_latest.deb
+curl -LO https://lpaolini.github.io/apt/downloads/ugreen-dxp-pve-leds-dkms_latest.deb
 sudo apt install ./ugreen-dxp-pve-leds-dkms_latest.deb
 ```
 
