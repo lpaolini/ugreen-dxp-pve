@@ -107,9 +107,9 @@ repository, and install this package:
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
 
-curl -fsSL https://lpaolini.github.io/apt/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
+curl -fsSL https://lpaolini.github.io/apt/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/lpaolini.gpg
 
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/apt stable main" | sudo tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
+echo "deb [signed-by=/etc/apt/keyrings/lpaolini.gpg] https://lpaolini.github.io/apt stable main" | sudo tee /etc/apt/sources.list.d/lpaolini.list
 
 sudo apt update
 sudo apt install ugreen-dxp-pve-truenas

@@ -51,9 +51,9 @@ stub pve-headers
 stub qemu-server
 
 install -d /etc/apt/keyrings
-curl -fsSL "${REPO}/public.key" | gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] ${REPO} ${CHANNEL} main" \
-  > /etc/apt/sources.list.d/ugreen-dxp-pve.list
+curl -fsSL "${REPO}/public.key" | gpg --dearmor -o /etc/apt/keyrings/lpaolini.gpg
+echo "deb [signed-by=/etc/apt/keyrings/lpaolini.gpg] ${REPO} ${CHANNEL} main" \
+  > /etc/apt/sources.list.d/lpaolini.list
 apt-get update -qq
 apt-get install -y -qq ugreen-dxp-pve-truenas >/dev/null
 echo "installed: $(dpkg-query -W -f='${Package} ${Version}  ' 'ugreen-dxp-pve-*')"

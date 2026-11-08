@@ -92,15 +92,18 @@ Enter Proxmox VE shell as root, and install the Debian repository:
 
 ```bash
 install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://lpaolini.github.io/apt/public.key | gpg --dearmor -o /etc/apt/keyrings/ugreen-dxp-pve.gpg
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/apt stable main" | tee /etc/apt/sources.list.d/ugreen-dxp-pve.list
+curl -fsSL https://lpaolini.github.io/apt/public.key | gpg --dearmor -o /etc/apt/keyrings/lpaolini.gpg
+echo "deb [signed-by=/etc/apt/keyrings/lpaolini.gpg] https://lpaolini.github.io/apt stable main" | tee /etc/apt/sources.list.d/lpaolini.list
 apt update
 ```
 
 The repository moved from `https://lpaolini.github.io/ugreen-dxp-pve`, which no
-longer gets updates. If you added it before, change the URL in
-`/etc/apt/sources.list.d/ugreen-dxp-pve.list` (and `ugreen-dxp-pve-dev.list`)
-to `https://lpaolini.github.io/apt`, then run `apt update`.
+longer gets updates. If you added it before, also remove the old source and
+key:
+
+```bash
+rm -f /etc/apt/sources.list.d/ugreen-dxp-pve.list /etc/apt/sources.list.d/ugreen-dxp-pve-dev.list /etc/apt/keyrings/ugreen-dxp-pve.gpg
+```
 
 To install the kernel modules and the support services for TrueNAS:
 
@@ -120,13 +123,13 @@ Every commit to the `dev` branch is published to a separate `dev` channel of the
 same repository. To try it on a test host, add a second source line:
 
 ```bash
-echo "deb [signed-by=/etc/apt/keyrings/ugreen-dxp-pve.gpg] https://lpaolini.github.io/apt dev main" | tee /etc/apt/sources.list.d/ugreen-dxp-pve-dev.list
+echo "deb [signed-by=/etc/apt/keyrings/lpaolini.gpg] https://lpaolini.github.io/apt dev main" | tee /etc/apt/sources.list.d/lpaolini-dev.list
 apt update && apt upgrade
 ```
 
 Development versions look like `0.9.10+dev5.gabc1234` (5 commits after
 `v0.9.10`): newer than the last release, older than the next one. To go back to
-stable, delete `ugreen-dxp-pve-dev.list`, run `apt update`, and reinstall the
+stable, delete `lpaolini-dev.list`, run `apt update`, and reinstall the
 stable versions explicitly (apt never downgrades on its own), for example
 `apt install ugreen-dxp-pve-truenas=0.9.10 ugreen-dxp-pve-leds-dkms=0.9.10 ugreen-dxp-pve-it87-dkms=0.9.10`.
 The stable 0.9.10 package reads the old `.conf` files again, so restore your
